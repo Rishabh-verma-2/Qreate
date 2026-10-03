@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { ContentOptions, UserMedia } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -41,7 +42,7 @@ export const projectsApi = {
 
 // ── Scripts ───────────────────────────────────────────────────────────────────
 export const scriptsApi = {
-  generate: (data: {
+  generate: (data: ContentOptions & {
     project_id: string;
     topic: string;
     title?: string;
@@ -60,19 +61,37 @@ export const scriptsApi = {
 
 // ── Videos ────────────────────────────────────────────────────────────────────
 export const videosApi = {
-  generate: (data: {
-    project_id: string;
-    script_id: string;
-    mode?: string;
-    duration_seconds?: number;
-    aspect_ratio?: string;
-    seed?: number;
-    engine?: string;
-  }) => api.post('/api/videos/generate', data).then((r) => r.data.data),
+  generate: (data: { project_id: string; script_id: string }) =>
+    api.post('/api/videos/generate', data).then((r) => r.data.data),
   getTask: (taskId: string) =>
     api.get(`/api/videos/tasks/${taskId}`).then((r) => r.data.data),
   list: () => api.get('/api/videos').then((r) => r.data.data),
   get: (id: string) => api.get(`/api/videos/${id}`).then((r) => r.data.data),
+};
+
+// ── Pipeline (one-shot + batch) ───────────────────────────────────────────────
+export const pipelineApi = {
+  run: (data: ContentOptions & { topic: string }) =>
+    api.post('/api/pipeline/run', data).then((r) => r.data.data),
+  queueStats: () => api.get('/api/queue/stats').then((r) => r.data.data),
+};
+
+export const batchesApi = {
+  create: (data: { name?: string; topics: string[]; options: ContentOptions }) =>
+    api.post('/api/batches', data).then((r) => r.data.data),
+  list: () => api.get('/api/batches').then((r) => r.data.data),
+  get: (id: string) => api.get(`/api/batches/${id}`).then((r) => r.data.data),
+};
+
+// ── Uploads (creator's own photos/videos) ──────────────────────────────────────
+export const uploadsApi = {
+  upload: (files: File[]): Promise<UserMedia[]> => {
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f));
+    return api
+      .post('/api/uploads', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 })
+      .then((r) => r.data.data);
+  },
 };
 
 // ── Health ─────────────────────────────────────────────────────────────────────

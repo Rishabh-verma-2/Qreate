@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { FileText, Video, Plus, ChevronRight, Loader2, Clock } from 'lucide-react';
 import { projectsApi } from '../services/api';
 import type { Project } from '../types';
+import VideoCard from '../components/VideoCard';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/Badge';
@@ -162,24 +163,10 @@ export default function ProjectDetail() {
       {videos.length > 0 && (
         <section>
           <h2 className="text-base font-semibold mb-4">Generated Videos ({videos.length})</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {videos.map((video) => {
-              const url = video.cloudinary_url || video.original_url;
-              return (
-                <Card key={video.id} className="p-0 overflow-hidden">
-                  {url ? (
-                    <video src={url} controls className="w-full aspect-video object-cover" />
-                  ) : (
-                    <div className="aspect-video bg-muted flex items-center justify-center">
-                      <Video className="w-8 h-8 text-muted-foreground opacity-30" />
-                    </div>
-                  )}
-                  <div className="p-3">
-                    <p className="text-xs text-muted-foreground">{formatDate(video.created_at)}</p>
-                  </div>
-                </Card>
-              );
-            })}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {videos.map((video) => (
+              <VideoCard key={video.id} video={video} />
+            ))}
           </div>
         </section>
       )}

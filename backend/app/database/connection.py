@@ -21,7 +21,7 @@ async def connect_db() -> None:
         logger.warning("MONGODB_URI not set — running without database persistence")
         return
     try:
-        _client = AsyncIOMotorClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
+        _client = AsyncIOMotorClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000, maxPoolSize=50)
         # Verify connection
         await _client.admin.command("ping")
         _db = _client[settings.MONGODB_DATABASE]
@@ -64,11 +64,18 @@ async def _ensure_indexes() -> None:
         await _db.video_tasks.create_index([("agnes_video_id", ASCENDING)])
         await _db.video_tasks.create_index([("status", ASCENDING)])
         await _db.video_tasks.create_index([("created_at", DESCENDING)])
+        # Queue claim: oldest queued job first
+        await _db.video_tasks.create_index([("status", ASCENDING), ("created_at", ASCENDING)])
+        await _db.video_tasks.create_index([("batch_id", ASCENDING)])
+
+        # Batches
+        await _db.batches.create_index([("created_at", DESCENDING)])
 
         # Generated videos
         await _db.generated_videos.create_index([("project_id", ASCENDING)])
         await _db.generated_videos.create_index([("task_id", ASCENDING)])
         await _db.generated_videos.create_index([("created_at", DESCENDING)])
+        await _db.generated_videos.create_index([("batch_id", ASCENDING)])
 
         logger.info("MongoDB indexes ensured")
     except Exception as e:

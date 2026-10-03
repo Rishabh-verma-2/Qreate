@@ -6,12 +6,14 @@ import {
   Plus,
   Clapperboard,
   Library,
+  Layers,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/projects', icon: FolderOpen, label: 'Projects' },
+  { to: '/batch', icon: Layers, label: 'Batch Studio' },
   { to: '/create', icon: Clapperboard, label: 'Create Video' },
   { to: '/library', icon: Library, label: 'Video Library' },
 ];
@@ -77,7 +79,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         {/* Footer */}
         <div className="p-4 border-t border-border">
           <p className="text-xs text-muted-foreground text-center">
-            Powered by Agnes AI
+            Open-source pipeline · 9:16 for Qoneqt
           </p>
         </div>
       </aside>

@@ -1,6 +1,8 @@
 """Cloudinary upload service."""
 
+import asyncio
 import logging
+import os
 from typing import Optional, Tuple
 
 import cloudinary
@@ -81,15 +83,16 @@ async def upload_video_file(
     """Upload a local video file to Cloudinary."""
     _configure()
     if not _configured:
-        logger.warning("Cloudinary not configured")
-        return None, None
+        raise CloudinaryError("Cloudinary is not configured (set CLOUDINARY_* env vars)")
 
     folder = f"qreate/projects/{project_id}"
     public_id = f"{folder}/video_{task_id}"
 
     try:
         logger.info(f"Uploading local file {file_path} to Cloudinary...")
-        result = cloudinary.uploader.upload(
+        # The SDK is synchronous — run it in a thread so the event loop keeps serving requests
+        result = await asyncio.to_thread(
+            cloudinary.uploader.upload_large if os.path.getsize(file_path) > 20_000_000 else cloudinary.uploader.upload,
             file_path,
             resource_type="video",
             public_id=public_id,

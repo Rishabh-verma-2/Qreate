@@ -14,31 +14,10 @@ import { scriptsApi, videosApi } from '../services/api';
 import type { Script, VideoTask } from '../types';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
-import { Select } from '../components/ui/Input';
 import { StatusBadge } from '../components/ui/Badge';
+import { CopyPostButton, VerticalPlayer } from '../components/VideoCard';
+import { downloadUrl } from '../lib/video';
 
-const ASPECT_RATIO_OPTIONS = [
-  { value: '16:9', label: '16:9 — Landscape (1280×704)' },
-  { value: '9:16', label: '9:16 — Portrait (720×1280)' },
-  { value: '1:1', label: '1:1 — Square (720×720)' },
-  { value: '4:3', label: '4:3 (960×720)' },
-  { value: '3:4', label: '3:4 (720×960)' },
-];
-
-const DURATION_OPTIONS = [
-  { value: '4', label: '4 seconds' },
-  { value: '5', label: '5 seconds' },
-  { value: '6', label: '6 seconds' },
-  { value: '8', label: '8 seconds' },
-  { value: '10', label: '10 seconds' },
-  { value: '12', label: '12 seconds' },
-];
-
-const ENGINE_OPTIONS = [
-  { value: 'free', label: '⚡ Free AI Multi-Scene Engine (Neural Voice + Visuals — 100% Free)' },
-  { value: 'auto', label: '🔄 Auto (Try Agnes AI, fallback to Free Engine if rate-limited)' },
-  { value: 'agnes', label: '🤖 Agnes Video Generator (Requires Token Plan on Agnes)' },
-];
 
 const POLL_INTERVAL = 4000; // ms
 
@@ -52,9 +31,6 @@ export default function GenerateVideo() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [task, setTask] = useState<VideoTask | null>(null);
-  const [aspectRatio, setAspectRatio] = useState('16:9');
-  const [durationSeconds, setDurationSeconds] = useState('5');
-  const [engine, setEngine] = useState('free');
   const [error, setError] = useState('');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -95,10 +71,6 @@ export default function GenerateVideo() {
       const createdTask = await videosApi.generate({
         project_id: script.project_id,
         script_id: scriptId,
-        mode: 'text',
-        duration_seconds: parseInt(durationSeconds),
-        aspect_ratio: aspectRatio,
-        engine: engine,
       });
       setTask(createdTask);
       if (createdTask.status !== 'completed' && createdTask.status !== 'failed') {
@@ -111,7 +83,7 @@ export default function GenerateVideo() {
     }
   }
 
-  const videoUrl = task?.cloudinary_url || (task?.generation_settings as Record<string, string | undefined>)?.video_url;
+  const videoUrl = task?.cloudinary_url;
 
   if (loading) {
     return (
@@ -125,7 +97,7 @@ export default function GenerateVideo() {
     <div className="p-8 max-w-3xl mx-auto animate-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Generate Video</h1>
-        <p className="text-sm text-muted-foreground mt-1">Configure and generate your AI video</p>
+        <p className="text-sm text-muted-foreground mt-1">Render your script into a publish-ready vertical video</p>
       </div>
 
       {/* Script Summary */}
@@ -144,41 +116,16 @@ export default function GenerateVideo() {
         </Card>
       )}
 
-      {/* Video Settings */}
+      {/* Output format */}
       {!task && (
         <Card className="mb-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Video Settings</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Select
-              label="Aspect Ratio"
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value)}
-              options={ASPECT_RATIO_OPTIONS}
-            />
-            <Select
-              label="Duration"
-              value={durationSeconds}
-              onChange={(e) => setDurationSeconds(e.target.value)}
-              options={DURATION_OPTIONS}
-            />
-          </div>
-          <div className="mt-4">
-            <Select
-              label="Generation Engine"
-              value={engine}
-              onChange={(e) => setEngine(e.target.value)}
-              options={ENGINE_OPTIONS}
-            />
-          </div>
-          <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-            {engine === 'free' ? (
-              <span>⚡ <strong className="text-green-400">100% Free Engine:</strong> Generates multi-scene neural narration via Edge-TTS and scene visuals, exported directly to Cloudinary.</span>
-            ) : engine === 'auto' ? (
-              <span>🔄 <strong className="text-primary">Auto Engine:</strong> Tries Agnes AI GPU rendering; if Agnes rate limits or queue is full, seamlessly uses the Free Engine.</span>
-            ) : (
-              <span>🤖 <strong className="text-foreground">Agnes AI:</strong> Direct Agnes cloud GPU rendering (requires paid token plan on Agnes platform).</span>
-            )}
-          </div>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Output</h2>
+          <ul className="text-sm text-muted-foreground space-y-1.5">
+            <li>📱 Vertical 1080×1920 (9:16) for the Qoneqt Global Feed</li>
+            <li>🎙️ Neural voiceover with word-by-word captions</li>
+            <li>🎬 Real stock footage per scene, colour-graded, with smooth transitions</li>
+            <li>🎵 Mood-matched royalty-free music, ducked under the voice</li>
+          </ul>
         </Card>
       )}
 
@@ -215,22 +162,16 @@ export default function GenerateVideo() {
           )}
 
           {/* Status messages */}
-          {task.status === 'pending' && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="w-4 h-4 animate-pulse" />
-              Connecting to Agnes AI...
-            </div>
-          )}
           {task.status === 'queued' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              In queue — Agnes is processing your request...
+              <Clock className="w-4 h-4 animate-pulse" />
+              Waiting for a free render worker...
             </div>
           )}
           {task.status === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Generating video... This typically takes 2–3 minutes.
+              <span className="capitalize">{task.stage || 'rendering'}</span>… usually under 2 minutes.
             </div>
           )}
           {task.status === 'completed' && (
@@ -249,28 +190,16 @@ export default function GenerateVideo() {
           {/* Video preview / download */}
           {task.status === 'completed' && videoUrl && (
             <div className="mt-4 space-y-3">
-              <video
-                src={videoUrl}
-                controls
-                className="w-full rounded-lg border border-border"
-              />
-              <div className="flex items-center gap-3">
-                <a
-                  href={videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium"
-                >
+              <VerticalPlayer url={videoUrl} poster={task.thumbnail_url} className="max-w-xs mx-auto border border-border" />
+              <div className="flex items-center justify-center gap-4">
+                <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium">
                   <ExternalLink className="w-4 h-4" />
                   Open video
                 </a>
-                <a
-                  href={videoUrl}
-                  download
-                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium"
-                >
-                  Download
+                <a href={downloadUrl(videoUrl)} className="text-sm text-primary hover:text-primary/80 font-medium">
+                  Download MP4
                 </a>
+                {script && <CopyPostButton video={{ post: script.post, title: script.title }} />}
               </div>
             </div>
           )}

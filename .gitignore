@@ -19,3 +19,8 @@ build/
 # OS & Logs
 .DS_Store
 *.log
+
+# Secrets — never commit real env files
+.env
+.env.*
+!.env.example

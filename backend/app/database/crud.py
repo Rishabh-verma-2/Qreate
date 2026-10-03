@@ -226,3 +226,57 @@ async def get_generated_video(video_id: str) -> Optional[dict]:
     except Exception:
         return None
     return _doc_to_dict(doc) if doc else None
+
+
+# ── Batches ───────────────────────────────────────────────────────────────────
+
+async def create_batch(data: Dict[str, Any]) -> dict:
+    db = get_db()
+    if db is None:
+        return {"id": "offline", **data}
+    doc = {**data, "created_at": _utcnow()}
+    result = await db.batches.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _doc_to_dict(doc)
+
+
+async def update_batch(batch_id: str, data: Dict[str, Any]) -> None:
+    db = get_db()
+    if db is None:
+        return
+    await db.batches.update_one({"_id": ObjectId(batch_id)}, {"$set": data})
+
+
+async def get_batch(batch_id: str) -> Optional[dict]:
+    db = get_db()
+    if db is None:
+        return None
+    try:
+        doc = await db.batches.find_one({"_id": ObjectId(batch_id)})
+    except Exception:
+        return None
+    return _doc_to_dict(doc) if doc else None
+
+
+async def list_batches(limit: int = 20) -> List[dict]:
+    db = get_db()
+    if db is None:
+        return []
+    cursor = db.batches.find({}).sort("created_at", -1).limit(limit)
+    return [_doc_to_dict(doc) async for doc in cursor]
+
+
+async def list_tasks_for_batch(batch_id: str) -> List[dict]:
+    db = get_db()
+    if db is None:
+        return []
+    cursor = db.video_tasks.find({"batch_id": batch_id}).sort("created_at", 1)
+    return [_doc_to_dict(doc) async for doc in cursor]
+
+
+async def list_videos_for_batch(batch_id: str) -> List[dict]:
+    db = get_db()
+    if db is None:
+        return []
+    cursor = db.generated_videos.find({"batch_id": batch_id})
+    return [_doc_to_dict(doc) async for doc in cursor]

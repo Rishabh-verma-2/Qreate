@@ -1,0 +1,3 @@
+# Optional ML extras: CLIP visual matching (CPU is fine; CUDA used automatically if present).
+# Docker installs these when built with --build-arg WITH_ML=true (default).
+open_clip_torch>=2.24

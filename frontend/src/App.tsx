@@ -8,6 +8,7 @@ import CreateVideo from './pages/CreateVideo';
 import ScriptEditor from './pages/ScriptEditor';
 import GenerateVideo from './pages/GenerateVideo';
 import VideoLibrary from './pages/VideoLibrary';
+import BatchStudio, { BatchDetail } from './pages/BatchStudio';
 
 function App() {
   return (
@@ -29,6 +30,8 @@ function App() {
                 <Route path="scripts/:scriptId" element={<ScriptEditor />} />
                 <Route path="generate-video/:scriptId" element={<GenerateVideo />} />
                 <Route path="library" element={<VideoLibrary />} />
+                <Route path="batch" element={<BatchStudio />} />
+                <Route path="batch/:batchId" element={<BatchDetail />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </AppLayout>

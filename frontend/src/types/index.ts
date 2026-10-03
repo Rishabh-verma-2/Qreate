@@ -18,7 +18,13 @@ export interface Scene {
   duration_seconds: number;
   narration: string;
   visual_description: string;
+  search_queries?: string[];
   camera_notes?: string;
+}
+
+export interface PostCopy {
+  caption?: string;
+  hashtags?: string[];
 }
 
 export interface Script {
@@ -26,8 +32,11 @@ export interface Script {
   project_id: string;
   title: string;
   hook?: string;
+  hook_text?: string;
   closing?: string;
   scenes: Scene[];
+  music_mood?: string;
+  post?: PostCopy;
   language: string;
   tone: string;
   audience?: string;
@@ -45,10 +54,15 @@ export type VideoTaskStatus = 'pending' | 'queued' | 'in_progress' | 'completed'
 export interface VideoTask {
   id: string;
   project_id: string;
-  script_id: string;
-  agnes_video_id?: string;
+  script_id?: string;
+  batch_id?: string;
+  topic?: string;
+  title?: string;
   status: VideoTaskStatus;
+  stage?: string;
   progress: number;
+  attempts?: number;
+  thumbnail_url?: string;
   error_message?: string;
   cloudinary_url?: string;
   generated_video_id?: string;
@@ -75,7 +89,29 @@ export interface GeneratedVideo {
   thumbnail_url?: string;
   duration_seconds?: number;
   file_format: string;
+  title?: string;
+  hook?: string;
+  post?: PostCopy;
+  credits?: string[];
+  media_sources?: string[];
+  timings?: Record<string, number>;
   created_at: string;
+}
+
+export interface BatchItem {
+  task: VideoTask;
+  video?: GeneratedVideo | null;
+}
+
+export interface Batch {
+  id: string;
+  name: string;
+  topics: string[];
+  task_ids: string[];
+  options: Record<string, unknown>;
+  created_at: string;
+  items?: BatchItem[];
+  summary?: { total: number; done: number; counts: Record<string, number> };
 }
 
 // ── Form types ─────────────────────────────────────────────────────────────────
@@ -90,9 +126,20 @@ export interface ScriptGenerateForm {
   additional_instructions?: string;
 }
 
-export interface VideoGenerateForm {
-  mode: 'text';
-  duration_seconds: number;
-  aspect_ratio: string;
-  seed?: number;
+export interface UserMedia {
+  url: string;
+  kind: 'image' | 'video';
+  duration?: number;
+  name?: string;
+}
+
+export interface ContentOptions {
+  title?: string;
+  voice_gender?: 'male' | 'female';
+  user_media?: UserMedia[];
+  duration_seconds?: number;
+  language?: string;
+  tone?: string;
+  audience?: string;
+  additional_instructions?: string;
 }

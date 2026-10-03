@@ -5,35 +5,10 @@ import { Button } from '../components/ui/Button';
 import { Input, Textarea, Select } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { projectsApi, scriptsApi } from '../services/api';
+import { DURATION_OPTIONS, LANGUAGE_OPTIONS, TONE_OPTIONS, VOICE_OPTIONS } from '../lib/options';
+import MediaUploader from '../components/MediaUploader';
+import type { UserMedia } from '../types';
 
-const TONE_OPTIONS = [
-  { value: 'professional', label: 'Professional' },
-  { value: 'educational', label: 'Educational' },
-  { value: 'entertaining', label: 'Entertaining' },
-  { value: 'cinematic', label: 'Cinematic' },
-  { value: 'conversational', label: 'Conversational' },
-  { value: 'inspirational', label: 'Inspirational' },
-];
-
-const DURATION_OPTIONS = [
-  { value: '30', label: '30 seconds' },
-  { value: '60', label: '1 minute' },
-  { value: '90', label: '1.5 minutes' },
-  { value: '120', label: '2 minutes' },
-  { value: '180', label: '3 minutes' },
-  { value: '300', label: '5 minutes' },
-];
-
-const LANGUAGE_OPTIONS = [
-  { value: 'English', label: 'English' },
-  { value: 'Spanish', label: 'Spanish' },
-  { value: 'French', label: 'French' },
-  { value: 'German', label: 'German' },
-  { value: 'Japanese', label: 'Japanese' },
-  { value: 'Chinese', label: 'Chinese' },
-  { value: 'Portuguese', label: 'Portuguese' },
-  { value: 'Hindi', label: 'Hindi' },
-];
 
 interface FormState {
   projectName: string;
@@ -44,6 +19,7 @@ interface FormState {
   tone: string;
   audience: string;
   additional_instructions: string;
+  voice_gender: string;
 }
 
 export default function CreateVideo() {
@@ -52,12 +28,14 @@ export default function CreateVideo() {
     projectName: '',
     topic: '',
     title: '',
-    duration_seconds: '60',
+    duration_seconds: '30',
     language: 'English',
-    tone: 'professional',
+    tone: 'energetic',
     audience: 'general',
     additional_instructions: '',
+    voice_gender: 'male',
   });
+  const [media, setMedia] = useState<UserMedia[]>([]);
   const [errors, setErrors] = useState<Partial<FormState>>({});
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'idle' | 'creating_project' | 'generating_script'>('idle');
@@ -99,6 +77,8 @@ export default function CreateVideo() {
         tone: form.tone,
         audience: form.audience,
         additional_instructions: form.additional_instructions || undefined,
+        voice_gender: form.voice_gender as 'male' | 'female',
+        user_media: media,
       });
 
       // Navigate to script editor
@@ -115,7 +95,7 @@ export default function CreateVideo() {
   const stepLabel = step === 'creating_project'
     ? 'Creating project...'
     : step === 'generating_script'
-    ? 'Generating script with Agnes AI...'
+    ? 'Writing hook & script...'
     : 'Generate Script';
 
   return (
@@ -123,7 +103,7 @@ export default function CreateVideo() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold">Create New Video</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure your video project and we'll generate a script using Agnes AI
+          Describe a topic, idea or trend. We write a hook-first script you can edit before rendering.
         </p>
       </div>
 
@@ -178,6 +158,12 @@ export default function CreateVideo() {
               onChange={set('tone')}
               options={TONE_OPTIONS}
             />
+            <Select
+              label="Voice"
+              value={form.voice_gender}
+              onChange={set('voice_gender')}
+              options={VOICE_OPTIONS}
+            />
             <Input
               label="Target Audience"
               placeholder="e.g. tech enthusiasts, beginners"
@@ -194,6 +180,9 @@ export default function CreateVideo() {
               onChange={set('additional_instructions')}
             />
           </div>
+          <div className="mt-4">
+            <MediaUploader value={media} onChange={setMedia} />
+          </div>
         </Card>
 
         {/* Info box */}
@@ -201,7 +190,7 @@ export default function CreateVideo() {
           <div className="flex items-start gap-2">
             <Sparkles className="w-4 h-4 text-primary mt-0.5 shrink-0" />
             <p>
-              Agnes 2.5 Flash will generate a scene-by-scene script tailored to your topic. You'll be able to review and edit it before generating the video.
+              Every script opens with a 3-second hook, is paced for short-form, and plans real stock footage per scene. Want many videos at once? Use Batch Studio.
             </p>
           </div>
         </div>
