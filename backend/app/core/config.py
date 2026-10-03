@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     PIXABAY_API_KEY: str = ""
     UNSPLASH_ACCESS_KEY: str = ""
 
+    # ── Trend research ─────────────────────────────────────────────────────
+    RESEARCH_ENABLED: bool = True
+    TREND_REGION: str = "IN"          # Google Trends / News / YouTube region
+    YOUTUBE_API_KEY: str = ""         # optional: top-performing recent Shorts
+
     # ── Visual matching (CLIP looks at candidate thumbnails) ───────────────
     VISUAL_RERANK: bool = True
     CLIP_MODEL: str = "ViT-B-32"

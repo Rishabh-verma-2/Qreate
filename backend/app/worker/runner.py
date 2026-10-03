@@ -12,6 +12,7 @@ from typing import List, Optional
 from app.core.config import get_settings
 from app.database import crud
 from app.services.pipeline import produce_video
+from app.services.research import gather_research, research_sources
 from app.services.script.generator import generate_script, script_fields_for_db
 from app.worker import queue
 
@@ -36,7 +37,9 @@ async def _ensure_script(job: dict, report) -> dict:
     if not topic:
         raise ValueError("Job has neither a script nor a topic")
 
-    await report(5, "writing script")
+    await report(4, "researching trends")
+    research = await gather_research(topic, opts.get("language", "English"))
+    await report(8, "writing script")
     generated = await generate_script(
         topic=topic,
         duration_seconds=int(opts.get("duration_seconds", 30)),
@@ -46,6 +49,7 @@ async def _ensure_script(job: dict, report) -> dict:
         title=opts.get("title"),
         additional_instructions=opts.get("additional_instructions"),
         has_user_media=bool(opts.get("user_media")),
+        research=research,
     )
     script = await crud.create_script({
         "project_id": job["project_id"],
@@ -91,6 +95,7 @@ async def process_job(job: dict, worker_id: str) -> None:
             "title": script.get("title"),
             "hook": script.get("hook"),
             "post": script.get("post") or {},
+            "inspiration": research_sources(script.get("research") or {}),
             "original_url": result["cloudinary_url"],
             "file_format": "mp4",
             **result,

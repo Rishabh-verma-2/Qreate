@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.database import crud
 from app.schemas.schemas import ScriptGenerateRequest, ScriptUpdate
+from app.services.research import gather_research
 from app.services.script.generator import generate_script, script_fields_for_db
 
 router = APIRouter(prefix="/api/scripts", tags=["Scripts"])
@@ -20,7 +21,9 @@ async def generate_new_script(body: ScriptGenerateRequest):
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {body.project_id}")
 
+    research = await gather_research(body.topic, body.language)
     script_data = await generate_script(
+        research=research,
         topic=body.topic,
         duration_seconds=body.duration_seconds,
         language=body.language,

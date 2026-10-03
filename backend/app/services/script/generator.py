@@ -14,6 +14,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.services.llm import LLMError, generate_json
+from app.services.research import research_brief
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,11 @@ STEP 3 — write for the ear:
 - Deliver a real payoff. End with a line that makes people comment (a question or a "tag someone who…") or loops back to the hook.
 - Punctuation is for the voice actor: commas and full stops create natural pauses; "…" for suspense.
 - Banned (sounds AI-written): {", ".join(AI_CLICHES[:18])}, emojis, hashtags in narration, stage directions.
+
+USING RESEARCH (when a RESEARCH block is provided):
+- Build the angle around what people actually search and what's working in top Shorts — but write an original hook, never copy a title.
+- Use concrete facts/numbers from the news items. Do NOT invent statistics; if you use a number it must come from the research or be common knowledge.
+- Tie in a trending-today topic only if it genuinely connects.
 
 STEP 4 — visuals. Each scene gets 2 stock-footage search queries of 2-4 words: concrete subject + action/setting that a stock site really has ("woman sipping chai balcony", "mumbai local train crowd", "hands typing laptop night"). Prefer people and real moments over objects. If the topic is in India, put "indian" or the city in the query. No text, logos, brands or celebrities. Also give 1-4 words of on_screen_text that capture the scene's key point (a number, a keyword) — used as a bold text card when no footage fits.
 
@@ -233,12 +239,15 @@ async def generate_script(
     additional_instructions: Optional[str] = None,
     has_user_media: bool = False,
     polish: bool = True,
+    research: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Write (and edit) a short-form, hook-first script. Returns the normalised script dict."""
     validate = _make_validator(topic, duration_seconds)
     brief = _build_user_prompt(
         topic, title, duration_seconds, language, tone, audience, additional_instructions, has_user_media,
     )
+    if research:
+        brief += "\n\n" + research_brief(research)
 
     logger.info(f"Writing script: topic={topic!r} duration={duration_seconds}s tone={tone} lang={language}")
     draft = await generate_json(
@@ -247,6 +256,7 @@ async def generate_script(
     )
     logger.info(f"Draft: format={draft.get('format')} hook={draft.get('hook')!r} via {draft.get('_llm_provider')}")
     if not polish:
+        draft["research"] = research or {}
         return draft
 
     draft_json = json.dumps({k: v for k, v in draft.items() if not k.startswith("_") and k != "total_duration_seconds"}, ensure_ascii=False)
@@ -264,9 +274,11 @@ async def generate_script(
             validate=validate, temperature=0.6,
         )
         logger.info(f"Edited: hook={edited.get('hook')!r}")
+        edited["research"] = research or {}
         return edited
     except LLMError as e:
         logger.warning(f"Editor pass failed, using draft: {e}")
+        draft["research"] = research or {}
         return draft
 
 
@@ -284,4 +296,5 @@ def script_fields_for_db(script: Dict[str, Any]) -> Dict[str, Any]:
         "music_mood": script.get("music_mood", "cinematic"),
         "post": script.get("post", {}),
         "llm_provider": script.get("_llm_provider"),
+        "research": script.get("research") or {},
     }

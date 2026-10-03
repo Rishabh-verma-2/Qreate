@@ -94,8 +94,17 @@ export interface GeneratedVideo {
   post?: PostCopy;
   credits?: string[];
   media_sources?: string[];
+  inspiration?: Inspiration;
   timings?: Record<string, number>;
   created_at: string;
+}
+
+export interface Inspiration {
+  niche?: string;
+  emotion?: string;
+  searches?: string[];
+  news?: { title: string; source: string; date: string; url: string }[];
+  top_shorts?: { title: string; views: number; url: string; channel?: string }[];
 }
 
 export interface BatchItem {

@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { StatusBadge } from '../components/ui/Badge';
-import { CopyPostButton, VerticalPlayer } from '../components/VideoCard';
+import { CopyPostButton, InspirationPanel, VerticalPlayer } from '../components/VideoCard';
 import { downloadUrl } from '../lib/video';
 import { formatDate } from '../lib/utils';
 import { DURATION_OPTIONS, LANGUAGE_OPTIONS, TONE_OPTIONS, VOICE_OPTIONS } from '../lib/options';
@@ -17,6 +17,7 @@ import MediaUploader from '../components/MediaUploader';
 const STAGE_LABELS: Record<string, string> = {
   queued: 'Waiting in queue',
   starting: 'Starting',
+  'researching trends': 'Researching trends & searches',
   'writing script': 'Writing hook & script',
   preparing: 'Preparing',
   voiceover: 'Recording voiceover',
@@ -203,6 +204,7 @@ function BatchItemCard({ item, topic }: { item: BatchItem; topic: string }) {
           <StatusBadge status={task.status} />
         </div>
         {video?.post?.caption && <p className="text-xs text-muted-foreground line-clamp-3">{video.post.caption}</p>}
+        <InspirationPanel inspiration={video?.inspiration} />
         {url && video && (
           <div className="flex flex-wrap gap-3 pt-1">
             <a href={downloadUrl(url)} className="text-xs text-primary font-medium hover:text-primary/80">Download MP4</a>
