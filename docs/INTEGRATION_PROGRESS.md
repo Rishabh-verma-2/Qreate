@@ -126,13 +126,72 @@ Development and target runtime machine specifications:
 
 ---
 
+## Milestone 3 — Ollama + Local Model Verification
+
+* **Status:** COMPLETE
+* **Date:** 2026-10-03
+* **Selected Model:** `qwen2.5:7b` (Image ID: `845dbda0ea48`)
+* **Download Size:** 4.7 GB (Under 5 GB threshold)
+* **Why Selected:**
+  1. Exceptional adherence to JSON schemas and complex instructions at the 7B tier.
+  2. Optimal hardware fit: Model weights consume ~4.6 GB in GPU memory, peaking at 5.38 GB VRAM total with inference context, leaving ~2.8 GB headroom on our 8 GB RTX 4060 GPU.
+  3. Stable official release on Ollama library with native tool and JSON formatting support.
+  4. Delivers sustained high-speed output (~48–50 tokens/sec).
+* **Installation Command:** `ollama pull qwen2.5:7b`
+* **Installation Result:** SUCCESS (`verifying sha256 digest`, `writing manifest`, `success`).
+
+### Host Environment & Hardware State:
+* **Ollama Version:** `0.35.1` (listening at `http://localhost:11434`)
+* **GPU:** NVIDIA GeForce RTX 4060 Laptop GPU
+* **Driver Version:** 610.62 / CUDA 13.3
+* **VRAM State:**
+  * Baseline before load: 736 MiB used / 8188 MiB total
+  * Resident with `qwen2.5:7b`: 5382 MiB used / 8188 MiB total (2806 MiB free headroom)
+* **System RAM:** 11.56 GB free out of 24 GB DDR5 (laptop remains completely cool and responsive)
+
+### Independent Verification Tests:
+
+#### Test A — Factual Shorts Script:
+* **Prompt:** Write a 30-second factual YouTube Shorts script about how GPS satellites calculate location using relativity.
+* **Result:** Generated rich, accurate narration with timestamps and visual cue blocks.
+* **Performance:** 40.94 tokens/sec, 316 tokens generated.
+
+#### Test B — Structured JSON Generation:
+* **Prompt:** Generate a video script in JSON format about "Why your brain craves sugar when stressed" matching the Qreate schema (`title`, `hook`, `scenes: [{scene_number, duration_seconds, narration, visual_description, camera_notes}]`, `closing`).
+* **Result:** Valid JSON generated with 0 formatting syntax errors.
+* **Performance:** 49.93 tokens/sec (192 tokens in 6.14s).
+
+#### Test C — Complete Multi-Scene Short (30–45s, 5–8 Scenes):
+* **Prompt:** Generate a complete structured video script in JSON about "How GPS actually determines your location" with 5–7 scenes.
+* **Result:** Generated 6 coherent scenes with camera angles, visual prompts, and narrations summing to 28 seconds.
+* **Performance:** 50.15 tokens/sec (526 tokens in 12.76s).
+
+#### Test D — Repeated Schema Reliability (3 Consecutive Runs with Qreate System Prompt):
+Tested against 3 diverse scientific topics with Qreate's actual system prompt and `format="json"`:
+1. *Deep sea creatures pressure survival:* Valid JSON = True | Title: "The Secrets of Deep Sea Survival" | 5 scenes | 48.4 tok/s
+2. *Noise cancelling headphones physics:* Valid JSON = True | Title: "How Noise-Cancelling Headphones Work: A Physics Explanation" | 5 scenes | 48.5 tok/s
+3. *Chili peppers chemistry:* Valid JSON = True | Title: "The Chemistry Behind Why Chili Peppers Feel Hot" | 6 scenes | 48.8 tok/s
+
+* **Structured Output Conformance:** 100% valid JSON matching Qreate's schema across all runs without manual correction.
+* **Average Inference Speed:** 48.6 tokens/sec.
+* **Service Responsiveness:** Ollama process remained fully responsive, stable, and ready for further requests.
+* **Errors:** None.
+* **Warnings:** None.
+
+### Project Protection:
+* No Qreate source code was modified.
+* No changes to frontend or backend routes.
+* No Purffle code or adapters modified.
+* Ollama and model executed completely standalone via HTTP API.
+
+---
+
 ## Current System State
 
 * **Qreate Codebase:** Unchanged, working tree clean.
-* **PurffleShorts:** Independently verified and fully functional in isolated environment.
-* **Ollama:** Installed on host (`version 0.35.1`), service running at `http://localhost:11434`.
-* **Ollama Models:** None installed (`ollama list` is empty).
-* **Qwen Model:** Not downloaded.
+* **PurffleShorts:** Independently verified and operational in isolated environment (`scratch/purffle-shorts/venv`).
+* **Ollama:** Operational (`version 0.35.1`) with `qwen2.5:7b` (4.7 GB) resident in VRAM.
+* **Qreate Local LLM Provider:** Ready to be implemented in Milestone 4.
 * **Qreate Integration:** Not started.
 * **Frontend Integration:** Not started.
 * **Backend Integration:** Not started.
@@ -147,7 +206,7 @@ Development and target runtime machine specifications:
 - [x] Purffle doctor verification
 - [x] Purffle no-key demo execution
 - [x] MP4 output verification
-- [ ] Milestone 3 — Ollama + local model verification
+- [x] Milestone 3 — Ollama + local model verification (`qwen2.5:7b`)
 - [ ] Milestone 4 — Qreate local LLM provider (Ollama)
 - [ ] Milestone 5 — Qreate → Purffle script adapter
 - [ ] Milestone 6 — Purffle video engine integration
