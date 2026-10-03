@@ -5,11 +5,13 @@ import { videosApi } from '../services/api';
 import type { GeneratedVideo } from '../types';
 import { Card } from '../components/ui/Card';
 import { formatDate } from '../lib/utils';
+import { downloadVideoFile } from '../lib/download';
 
 export default function VideoLibrary() {
   const navigate = useNavigate();
   const [videos, setVideos] = useState<GeneratedVideo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     videosApi.list()
@@ -88,14 +90,31 @@ export default function VideoLibrary() {
                         <ExternalLink className="w-3.5 h-3.5" />
                         View
                       </a>
-                      <a
-                        href={url}
-                        download
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-medium"
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setDownloadingId(video.id);
+                          try {
+                            await downloadVideoFile(url, `qreate_video_${video.id}.mp4`);
+                          } finally {
+                            setDownloadingId(null);
+                          }
+                        }}
+                        disabled={downloadingId === video.id}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-medium disabled:opacity-50 cursor-pointer"
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        Download
-                      </a>
+                        {downloadingId === video.id ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Downloading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>

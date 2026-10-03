@@ -4,7 +4,10 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
+import httpx
 
 from app.core.config import get_settings
 from app.core.errors import AgnesAPIError, AgnesQueueFullError
@@ -273,6 +276,32 @@ async def list_videos():
     """List all generated videos."""
     videos = await crud.list_generated_videos(limit=100)
     return {"data": videos, "total": len(videos)}
+
+
+@router.get("/download")
+async def download_video(url: str, filename: Optional[str] = "qreate_video.mp4"):
+    """Proxy streaming download for video URLs with Content-Disposition attachment header."""
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Invalid video URL")
+
+    clean_filename = filename if filename.endswith(".mp4") else f"{filename}.mp4"
+
+    async def stream_video():
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            async with client.stream("GET", url) as resp:
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=resp.status_code, detail="Failed to fetch video stream")
+                async for chunk in resp.aiter_bytes(chunk_size=65536):
+                    yield chunk
+
+    return StreamingResponse(
+        stream_video(),
+        media_type="video/mp4",
+        headers={
+            "Content-Disposition": f'attachment; filename="{clean_filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @router.get("/{video_id}", response_model=dict)

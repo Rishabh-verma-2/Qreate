@@ -9,9 +9,11 @@ import {
   AlertCircle,
   ExternalLink,
   ChevronRight,
+  Download,
 } from 'lucide-react';
 import { scriptsApi, videosApi } from '../services/api';
 import type { Script, VideoTask } from '../types';
+import { downloadVideoFile } from '../lib/download';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Select } from '../components/ui/Input';
@@ -56,6 +58,7 @@ export default function GenerateVideo() {
   const [durationSeconds, setDurationSeconds] = useState('5');
   const [engine, setEngine] = useState('free');
   const [error, setError] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -252,24 +255,44 @@ export default function GenerateVideo() {
               <video
                 src={videoUrl}
                 controls
-                className="w-full rounded-lg border border-border"
+                className="w-full rounded-xl border border-border bg-black shadow-lg"
               />
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsDownloading(true);
+                    try {
+                      const cleanTitle = (script?.title || 'video').replace(/[^a-zA-Z0-9_-]/g, '_');
+                      await downloadVideoFile(videoUrl, `qreate_${cleanTitle}_${task.id}.mp4`);
+                    } finally {
+                      setIsDownloading(false);
+                    }
+                  }}
+                  disabled={isDownloading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving Video...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Video (.mp4)</span>
+                    </>
+                  )}
+                </button>
+
                 <a
                   href={videoUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-accent text-xs font-medium text-foreground transition-colors"
                 >
-                  <ExternalLink className="w-4 h-4" />
-                  Open video
-                </a>
-                <a
-                  href={videoUrl}
-                  download
-                  className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium"
-                >
-                  Download
+                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>Open Direct Link</span>
                 </a>
               </div>
             </div>
