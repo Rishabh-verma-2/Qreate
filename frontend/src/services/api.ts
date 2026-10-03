@@ -2,6 +2,13 @@ import axios from 'axios';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+import type {
+  AuthResponse,
+  LoginCredentials,
+  RegisterCredentials,
+  User,
+} from '../types';
+
 export const api = axios.create({
   baseURL: BASE_URL,
   timeout: 120000,
@@ -10,19 +17,27 @@ export const api = axios.create({
   },
 });
 
-// Request logging
+// Request interceptor: attach bearer token if present
 api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('qreate_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   console.log(`→ ${config.method?.toUpperCase()} ${config.url}`);
   return config;
 });
 
-// Response error normalization
+// Response error normalization & auth handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      // Clear token if invalid or expired
+      localStorage.removeItem('qreate_token');
+    }
     const message =
-      error.response?.data?.error ||
       error.response?.data?.detail ||
+      error.response?.data?.error ||
       error.message ||
       'An unexpected error occurred';
     console.error(`API Error: ${message}`, error.response?.data);
@@ -78,4 +93,16 @@ export const videosApi = {
 // ── Health ─────────────────────────────────────────────────────────────────────
 export const healthApi = {
   check: () => api.get('/api/health').then((r) => r.data),
+};
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+export const authApi = {
+  register: (data: RegisterCredentials): Promise<AuthResponse> =>
+    api.post('/api/auth/register', data).then((r) => r.data?.data ?? r.data),
+  login: (data: LoginCredentials): Promise<AuthResponse> =>
+    api.post('/api/auth/login', data).then((r) => r.data?.data ?? r.data),
+  me: (): Promise<User> =>
+    api.get('/api/auth/me').then((r) => r.data?.data ?? r.data),
+  logout: (): Promise<{ message: string }> =>
+    api.post('/api/auth/logout').then((r) => r.data?.data ?? r.data),
 };

@@ -96,3 +96,37 @@ export interface VideoGenerateForm {
   aspect_ratio: string;
   seed?: number;
 }
+
+// ── Auth types ─────────────────────────────────────────────────────────────────
+
+export interface User {
+  id: string;
+  email: string;
+  name?: string | null;
+  full_name?: string | null;
+  is_active?: boolean;
+  is_verified?: boolean;
+  avatar?: string | null;
+  avatar_url?: string | null;
+  tier?: string;
+  created_at?: string;
+  last_login?: string | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterCredentials {
+  email: string;
+  password: string;
+  name?: string;
+  full_name?: string;
+}

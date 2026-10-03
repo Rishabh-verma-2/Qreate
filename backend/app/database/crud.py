@@ -226,3 +226,65 @@ async def get_generated_video(video_id: str) -> Optional[dict]:
     except Exception:
         return None
     return _doc_to_dict(doc) if doc else None
+
+
+# ── Users ────────────────────────────────────────────────────────────────────
+
+async def create_user(email: str, password_hash: str, name: Optional[str] = None) -> dict:
+    """Create a new user document in MongoDB Atlas."""
+    db = get_db()
+    clean_email = email.strip().lower()
+    now = _utcnow()
+    display_name = name.strip() if name and name.strip() else clean_email.split("@")[0].capitalize()
+    doc = {
+        "email": clean_email,
+        "password_hash": password_hash,
+        "name": display_name,
+        "avatar": f"https://api.dicebear.com/7.x/bottts/svg?seed={clean_email}",
+        "tier": "free",
+        "created_at": now,
+        "updated_at": now,
+        "last_login_at": now,
+    }
+    if db is None:
+        return {"id": "offline_user", **doc, "created_at": now.isoformat()}
+    result = await db.users.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _doc_to_dict(doc)
+
+
+async def get_user_by_email(email: str) -> Optional[dict]:
+    """Retrieve user by normalized email."""
+    db = get_db()
+    if db is None:
+        return None
+    clean_email = email.strip().lower()
+    doc = await db.users.find_one({"email": clean_email})
+    return _doc_to_dict(doc) if doc else None
+
+
+async def get_user_by_id(user_id: str) -> Optional[dict]:
+    """Retrieve user by ObjectId string."""
+    db = get_db()
+    if db is None:
+        return None
+    try:
+        doc = await db.users.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        return None
+    return _doc_to_dict(doc) if doc else None
+
+
+async def update_user_last_login(user_id: str) -> None:
+    """Update last_login_at timestamp."""
+    db = get_db()
+    if db is None:
+        return
+    try:
+        await db.users.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"last_login_at": _utcnow()}}
+        )
+    except Exception:
+        pass
+

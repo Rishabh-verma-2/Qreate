@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     VIDEO_POLL_MAX_ATTEMPTS: int = 120   # 20 minutes max
     VIDEO_QUEUE_RETRY_MAX_SECONDS: int = 900  # 15 minutes for queue full
 
+    # ── Authentication & Security ──────────────────────────────────────────
+    JWT_SECRET_KEY: str = "qreate-jwt-secret-key-super-secure-token-2026"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_DAYS: int = 7
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

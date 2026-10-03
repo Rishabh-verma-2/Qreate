@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.errors import QreateError, qreate_exception_handler, generic_exception_handler
 from app.database.connection import connect_db, close_db
-from app.api.routes import health, projects, scripts, videos
+from app.api.routes import auth, health, projects, scripts, videos
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,6 +51,7 @@ async def shutdown():
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(scripts.router)
 app.include_router(videos.router)

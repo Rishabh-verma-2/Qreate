@@ -50,6 +50,10 @@ async def _ensure_indexes() -> None:
     if _db is None:
         return
     try:
+        # Users
+        await _db.users.create_index([("email", ASCENDING)], unique=True)
+        await _db.users.create_index([("created_at", DESCENDING)])
+
         # Projects
         await _db.projects.create_index([("created_at", DESCENDING)])
         await _db.projects.create_index([("status", ASCENDING)])
