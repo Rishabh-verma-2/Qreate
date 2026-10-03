@@ -36,6 +36,7 @@ const DURATION_OPTIONS = [
 
 const ENGINE_OPTIONS = [
   { value: 'free', label: '⚡ Free AI Multi-Scene Engine (Neural Voice + Visuals — 100% Free)' },
+  { value: 'purffle', label: '🎬 PurffleShorts (9:16)' },
   { value: 'auto', label: '🔄 Auto (Try Agnes AI, fallback to Free Engine if rate-limited)' },
   { value: 'agnes', label: '🤖 Agnes Video Generator (Requires Token Plan on Agnes)' },
 ];
@@ -171,7 +172,9 @@ export default function GenerateVideo() {
             />
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-            {engine === 'free' ? (
+            {engine === 'purffle' ? (
+              <span>🎬 <strong className="text-purple-400">PurffleShorts (9:16):</strong> Generates fast portrait Shorts with neural Edge-TTS voiceover, background visuals, and word-synced burnt captions.</span>
+            ) : engine === 'free' ? (
               <span>⚡ <strong className="text-green-400">100% Free Engine:</strong> Generates multi-scene neural narration via Edge-TTS and scene visuals, exported directly to Cloudinary.</span>
             ) : engine === 'auto' ? (
               <span>🔄 <strong className="text-primary">Auto Engine:</strong> Tries Agnes AI GPU rendering; if Agnes rate limits or queue is full, seamlessly uses the Free Engine.</span>

@@ -219,11 +219,59 @@ Development and target runtime machine specifications:
 - [x] Purffle no-key demo execution
 - [x] MP4 output verification
 - [x] Milestone 3 — Ollama + local model verification (`qwen2.5:7b`)
-- [x] Milestone 4 — Qreate → Purffle script adapter & first real video generation
-- [ ] Milestone 5 — Video router integration (`engine == "purffle"`)
-- [ ] Milestone 6 — Task tracking & Cloudinary / DB upload integration
-- [ ] Milestone 7 — Frontend engine selection UI (`[ Purffle Local ]`)
-- [ ] Milestone 8 — Complete end-to-end demonstration from UI
+- [x] Milestone 5 — Video router integration (`engine == "purffle"`)
+- [x] Milestone 6 — Task tracking & Cloudinary / DB upload integration
+- [x] Milestone 7 — Frontend engine selection UI (`[ PurffleShorts (9:16) ]`)
+- [x] Milestone 8 — Complete end-to-end demonstration & verification
+
+---
+
+### Milestone — Qreate Purffle Engine Integration
+
+* **Date / Time:** 2026-10-03 12:28:40 IST
+* **Objective:** Integrate the verified PurffleShorts rendering pipeline into Qreate's native video generation architecture (`engine: "purffle"`), reusing existing task models, MongoDB persistence, Cloudinary upload pipeline, and frontend engine selector without altering Free Engine or Agnes behavior.
+* **Files Modified:**
+  - `backend/app/schemas/schemas.py`: Added `engine: str = Field("auto", pattern="^(auto|free|agnes|purffle)$")` to `VideoGenerateRequest`.
+  - `backend/app/api/routes/videos.py`: Added `_generate_via_purffle_engine` and routed `if engine == "purffle":` in `_run_video_generation`. Preserved Free and Agnes engine flows.
+  - `backend/app/services/purffle/__init__.py`: Exported `validate_purffle_mp4` and `VideoValidationResult`.
+  - `frontend/src/pages/GenerateVideo.tsx`: Added `PurffleShorts (9:16)` to `ENGINE_OPTIONS` and contextual engine info box.
+* **Files Created:**
+  - `backend/app/services/purffle/validator.py`: Video container, resolution, duration, audio stream, and non-empty file validation using bundled FFmpeg.
+* **Files Deleted:** None.
+* **Backend Changes:**
+  - Integrated `_generate_via_purffle_engine` using verified `qreate_script_to_purffle` adapter and `run_purffle_render` runner.
+  - Reused existing `upload_video_file` from `app.services.cloudinary.uploader` with safe fallback to local file URL if Cloudinary is unavailable.
+  - Implemented intermediate progress tracking (`15%` -> `25%` -> `50%..85%` -> `90%` -> `100%`) hooked into FastAPI background task loop.
+* **Frontend Changes:**
+  - Added `PurffleShorts (9:16)` option in the generation engine selector dropdown with informative description helper.
+* **Task Integration:**
+  - Standard Qreate `video_tasks` lifecycle: `pending` -> `in_progress` -> `completed`.
+  - Real-time progress updates stored in MongoDB and polled via `GET /api/videos/tasks/{task_id}`.
+* **Storage Integration:**
+  - Cloudinary upload: Video uploaded to `qreate/projects/{project_id}/video_{task_id}`.
+  - MongoDB collection: Video metadata persisted in `generated_videos` collection via `crud.create_generated_video`.
+* **Tests:**
+  - Full end-to-end API test executed against live backend (`http://127.0.0.1:8000`):
+    1. Health check: `GET /api/health` -> OK (database & cloudinary connected).
+    2. Project created: `6ac0a7564a1d7483e37f3623` ("Dark Matter Mystery").
+    3. Script generated via Qreate's existing script generator: `6ac0a7604a1d7483e37f3624` (3 scenes in 9.55s).
+    4. Task submitted: `POST /api/videos/generate` with `engine: "purffle"`, `aspect_ratio: "9:16"` -> Task ID `6ac0a7604a1d7483e37f3625`.
+    5. Polled `GET /api/videos/tasks/{task_id}` until completion (19 polls, 61.8s total).
+    6. Verified generated video record `6ac0a79a4a1d7483e37f3626`.
+* **Test Results:** 100% PASSED.
+* **MP4 Specifications:**
+  - Cloudinary URL: `https://res.cloudinary.com/dumwirykd/video/upload/v1791010718/qreate/projects/6ac0a7564a1d7483e37f3623/video_6ac0a7604a1d7483e37f3625.mp4`
+  - Duration: 48 seconds
+  - Dimensions: 1080×1920 (9:16 portrait)
+  - Codecs: H.264 High profile (video) + AAC (audio)
+  - Subtitles: Synchronized word-by-word burned captions
+  - Render Time: 58.8 seconds
+* **Errors:** None.
+* **Warnings:** None.
+* **Limitations:** PurffleShorts engine is specifically optimized for portrait shorts (9:16).
+* **Git Commit:** `feat: integrate Purffle engine into Qreate video pipeline`
+* **Final Result:** PurffleShorts is fully integrated into Qreate as a first-class video-generation engine alongside Free Engine and Agnes Cloud.
+* **Next Milestone:** Demo verification & presentation.
 
 ---
 

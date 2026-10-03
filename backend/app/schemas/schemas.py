@@ -78,7 +78,7 @@ class VideoGenerateRequest(BaseModel):
     aspect_ratio: str = Field("16:9", pattern="^(21:9|16:9|4:3|1:1|3:4|9:16)$")
     seed: Optional[int] = None
     use_full_script: bool = True
-    engine: str = "auto"  # 'auto' | 'free' | 'agnes'
+    engine: str = Field("auto", pattern="^(auto|free|agnes|purffle)$")
 
 
 
