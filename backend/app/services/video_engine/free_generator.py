@@ -288,31 +288,34 @@ def render_scene_clip(
 
 
 def concat_scene_clips(clip_paths: List[str], final_output: str, ffmpeg_exe: str) -> bool:
-    """Concatenate multiple scene MP4 clips into one unified video."""
+    """Concatenate multiple scene MP4 clips into one unified video with guaranteed transitions."""
     if len(clip_paths) == 1:
         import shutil
         shutil.copyfile(clip_paths[0], final_output)
         return True
 
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
-        list_file = f.name
-        for p in clip_paths:
-            f.write(f"file '{os.path.abspath(p)}'\n")
+    inputs = []
+    filter_parts = []
+    for i, p in enumerate(clip_paths):
+        inputs.extend(["-i", p])
+        filter_parts.append(f"[{i}:v][{i}:a]")
 
-    try:
-        cmd = [
-            ffmpeg_exe, "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", list_file,
-            "-c", "copy",
-            final_output,
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        return res.returncode == 0
-    finally:
-        if os.path.exists(list_file):
-            os.remove(list_file)
+    filter_complex = "".join(filter_parts) + f"concat=n={len(clip_paths)}:v=1:a=1[v][a]"
+    cmd = [
+        ffmpeg_exe, "-y",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", "[v]", "-map", "[a]",
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k",
+        final_output,
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode == 0:
+        return True
+    logger.error(f"Filter complex concat failed: {res.stderr[:200]}")
+    return False
 
 
 async def generate_free_video(
@@ -410,3 +413,52 @@ async def generate_free_video(
         final_duration_sec = int(total_duration or len(scenes) * 5)
         logger.info(f"Video created with synced subtitles: {cloudinary_url}")
         return cloudinary_url, cloudinary_public_id, final_duration_sec
+
+
+async def sync_audio_and_captions_to_video(
+    video_url: str,
+    script: Dict[str, Any],
+    task_id: str,
+    project_id: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Take a raw video (e.g. from Agnes AI or stock), generate synchronized neural voiceover and burned captions, then upload to Cloudinary."""
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    voice = _get_voice_for_tone(script.get("tone", "professional"))
+
+    scenes = script.get("scenes") or []
+    narration = (
+        scenes[0].get("narration") if scenes else ""
+    ) or script.get("hook") or script.get("title") or "AI generated video"
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        audio_file = os.path.join(tmp_dir, "sync_audio.mp3")
+        srt_file = os.path.join(tmp_dir, "sync_sub.srt")
+        output_mp4 = os.path.join(tmp_dir, "sync_final.mp4")
+
+        has_audio, audio_dur = await generate_scene_audio_and_subtitles(
+            text=narration,
+            audio_path=audio_file,
+            srt_path=srt_file,
+            voice=voice,
+        )
+
+        clean_srt = srt_file.replace("'", "\\'")
+        cmd = [
+            ffmpeg_exe, "-y",
+            "-i", video_url,
+            "-i", audio_file,
+            "-vf", f"subtitles='{clean_srt}':force_style='FontSize=22,FontName=Arial,Bold=1,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=30'",
+            "-c:v", "libx264", "-preset", "fast",
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            output_mp4,
+        ]
+
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0 and os.path.exists(output_mp4):
+            return await upload_video_file(output_mp4, project_id, task_id)
+        else:
+            logger.warning(f"Audio/caption sync failed: {res.stderr[:200]}, falling back to raw upload")
+            from app.services.cloudinary.uploader import upload_video_from_url
+            return await upload_video_from_url(video_url, project_id, task_id)
+
