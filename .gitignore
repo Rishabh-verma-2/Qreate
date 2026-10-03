@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*.py[cod]
+backend/venv/
+venv/
+.venv/
+
+# Node (ignored as requested)
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+build/
+.npm
+*.tsbuildinfo
+
+# OS & Logs
+.DS_Store
+*.log
