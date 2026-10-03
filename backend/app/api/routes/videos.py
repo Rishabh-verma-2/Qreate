@@ -14,7 +14,7 @@ from app.services.agnes.client import get_agnes_client
 from app.services.cloudinary.uploader import upload_video_from_url
 from app.services.script.generator import script_to_video_prompt
 
-from app.services.video_engine.free_generator import generate_free_video
+from app.services.video_engine import generate_free_video, sync_audio_and_captions_to_video
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
 logger = logging.getLogger(__name__)
@@ -200,11 +200,13 @@ async def _run_video_generation(
                 if not video_url:
                     raise AgnesAPIError("Agnes returned completed but no URL", status_code=502)
 
-                # Upload to Cloudinary
-                cloudinary_url, cloudinary_public_id = await upload_video_from_url(
+                # Process raw Agnes video: add neural voiceover and synchronized captions
+                script = await crud.get_script(script_id)
+                cloudinary_url, cloudinary_public_id = await sync_audio_and_captions_to_video(
                     video_url=video_url,
-                    project_id=project_id,
+                    script=script or {},
                     task_id=task_id,
+                    project_id=project_id,
                 )
 
                 # Save to generated_videos collection
@@ -216,7 +218,7 @@ async def _run_video_generation(
                     "cloudinary_public_id": cloudinary_public_id,
                     "original_url": video_url,
                     "file_format": "mp4",
-                    "duration_seconds": int(status_data.get("seconds", 0) or 0),
+                    "duration_seconds": int(status_data.get("seconds", 0) or 5),
                 })
 
                 await _update_task(
