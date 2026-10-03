@@ -160,33 +160,66 @@ async def generate_scene_audio_and_subtitles(
     srt_path: str,
     voice: str,
 ) -> Tuple[bool, float]:
-    """Generate audio and millisecond-accurate synchronized SRT subtitles."""
+    """Generate audio and millisecond-accurate word-by-word synchronized SRT subtitles."""
     try:
         import edge_tts
         clean_text = text.strip() or "Scene narration."
-        communicate = edge_tts.Communicate(clean_text, voice)
+        # Use WordBoundary to receive millisecond timing per spoken word
+        communicate = edge_tts.Communicate(clean_text, voice, boundary="WordBoundary")
 
-        sub_entries = []
-        idx = 1
-
+        words = []
         with open(audio_path, "wb") as f:
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     f.write(chunk["data"])
-                elif chunk["type"] == "SentenceBoundary":
+                elif chunk["type"] == "WordBoundary":
                     start = chunk["offset"] / 10_000_000.0
-                    end = start + (chunk["duration"] / 10_000_000.0)
-                    chunk_text = chunk["text"].strip()
-                    if chunk_text:
-                        sub_entries.append(
-                            f"{idx}\n{_format_srt_time(start)} --> {_format_srt_time(end)}\n{chunk_text}\n"
-                        )
-                        idx += 1
+                    dur = chunk["duration"] / 10_000_000.0
+                    w_text = chunk["text"].strip()
+                    if w_text:
+                        words.append({"start": start, "end": start + dur, "text": w_text})
 
         duration = _get_media_duration(audio_path)
-        if not sub_entries and clean_text:
+
+        # Build punchy word-by-word dynamic subtitle cues (Alex Hormozi / TikTok / Shorts style)
+        sub_entries = []
+        if words:
+            cues = []
+            i = 0
+            glue = {"the", "a", "an", "to", "in", "of", "for", "on", "with", "at", "is", "and", "by", "its", "it"}
+            while i < len(words):
+                curr = words[i]
+                # If current word is very short or glue word, pair it with the next word for readability
+                if i < len(words) - 1 and (len(curr["text"]) <= 2 or curr["text"].lower() in glue):
+                    nxt = words[i + 1]
+                    cues.append({
+                        "start": curr["start"],
+                        "end": nxt["end"],
+                        "text": f"{curr['text']} {nxt['text']}".upper()
+                    })
+                    i += 2
+                else:
+                    cues.append({
+                        "start": curr["start"],
+                        "end": curr["end"],
+                        "text": curr["text"].upper()
+                    })
+                    i += 1
+
+            for idx, cue in enumerate(cues):
+                s = cue["start"]
+                # Seamless end: stretch slightly to next start to eliminate flickering gaps
+                if idx < len(cues) - 1:
+                    e = min(cues[idx + 1]["start"], cue["end"] + 0.08)
+                    e = max(e, s + 0.15)
+                else:
+                    e = min(duration, cue["end"] + 0.3)
+                sub_entries.append(
+                    f"{idx + 1}\n{_format_srt_time(s)} --> {_format_srt_time(e)}\n{cue['text']}\n"
+                )
+        elif clean_text:
             sub_entries.append(
-                f"1\n00:00:00,100 --> {_format_srt_time(max(duration - 0.2, 1.0))}\n{clean_text}\n"
+                f"1\n00:00:00,100 --> {_format_srt_time(max(duration - 0.2, 1.0))}\n{clean_text.upper()}\n"
             )
 
         with open(srt_path, "w", encoding="utf-8") as f:
@@ -236,9 +269,14 @@ async def _generate_agnes_ai_image(prompt: str, output_path: str) -> bool:
     return False
 
 
-async def _fetch_openverse_image(keywords: str, output_path: str, scene_num: int) -> bool:
+async def _fetch_openverse_image(
+    keywords: str,
+    output_path: str,
+    scene_num: int,
+    used_sources: Optional[set] = None,
+) -> bool:
     """Fetch high-res Creative Commons photograph matching exact keywords from Openverse."""
-    url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(keywords)}&page_size=6"
+    url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(keywords)}&page_size=8"
     headers = {"User-Agent": "QreateApp/1.0 (free-generator@qreate.local)"}
 
     try:
@@ -248,7 +286,12 @@ async def _fetch_openverse_image(keywords: str, output_path: str, scene_num: int
                 data = resp.json()
                 results = data.get("results") or []
                 if results:
-                    choice = results[(scene_num - 1) % len(results)]
+                    if used_sources is not None:
+                        available = [r for r in results if r.get("url") and r.get("url") not in used_sources]
+                        choice = available[0] if available else results[(scene_num - 1) % len(results)]
+                    else:
+                        choice = results[(scene_num - 1) % len(results)]
+
                     img_url = choice.get("url")
                     if img_url:
                         dl_resp = await client.get(img_url, headers=headers, timeout=12.0, follow_redirects=True)
@@ -256,17 +299,23 @@ async def _fetch_openverse_image(keywords: str, output_path: str, scene_num: int
                             with open(output_path, "wb") as f:
                                 f.write(dl_resp.content)
                             _ensure_1080p(output_path)
+                            if used_sources is not None:
+                                used_sources.add(img_url)
                             return True
     except Exception as e:
         logger.info(f"Openverse search skipped for '{keywords}': {e}")
     return False
 
 
-async def _fetch_wikimedia_image(keywords: str, output_path: str) -> bool:
+async def _fetch_wikimedia_image(
+    keywords: str,
+    output_path: str,
+    used_sources: Optional[set] = None,
+) -> bool:
     """Fetch high-res photograph from Wikimedia Commons."""
     url = (
         f"https://commons.wikimedia.org/w/api.php?action=query&generator=search"
-        f"&gsrnamespace=6&gsrsearch={urllib.parse.quote(keywords)}&gsrlimit=3"
+        f"&gsrnamespace=6&gsrsearch={urllib.parse.quote(keywords)}&gsrlimit=4"
         f"&prop=imageinfo&iiprop=url&iiurlwidth=1920&format=json"
     )
     headers = {"User-Agent": "QreateApp/1.0 (contact@qreate.local)"}
@@ -281,12 +330,14 @@ async def _fetch_wikimedia_image(keywords: str, output_path: str) -> bool:
                     info_list = p.get("imageinfo") or []
                     if info_list:
                         thumb = info_list[0].get("thumburl") or info_list[0].get("url")
-                        if thumb and any(ext in thumb.lower() for ext in [".jpg", ".jpeg", ".png"]):
+                        if thumb and (used_sources is None or thumb not in used_sources) and any(ext in thumb.lower() for ext in [".jpg", ".jpeg", ".png"]):
                             dl_resp = await client.get(thumb, headers=headers, timeout=12.0, follow_redirects=True)
                             if dl_resp.status_code == 200 and len(dl_resp.content) > 5000:
                                 with open(output_path, "wb") as f:
                                     f.write(dl_resp.content)
                                 _ensure_1080p(output_path)
+                                if used_sources is not None:
+                                    used_sources.add(thumb)
                                 return True
     except Exception as e:
         logger.info(f"Wikimedia search skipped for '{keywords}': {e}")
@@ -299,6 +350,7 @@ async def fetch_scene_image(
     output_path: str,
     scene_num: int,
     script_title: str = "",
+    used_sources: Optional[set] = None,
 ) -> str:
     """Fetch realistic 1920x1080 scene image strictly matched to the script.
 
@@ -320,24 +372,24 @@ async def fetch_scene_image(
 
     # 2. Try Openverse CC live search with extracted keywords
     logger.info(f"Scene {scene_num}: Searching Openverse for '{keywords}'...")
-    if await _fetch_openverse_image(keywords, output_path, scene_num):
+    if await _fetch_openverse_image(keywords, output_path, scene_num, used_sources=used_sources):
         logger.info(f"Scene {scene_num}: Openverse provided image for '{keywords}'.")
         return output_path
 
     # If specific keywords yielded no results, try script title keywords
     if script_title and script_title != keywords:
         title_keywords = _extract_search_keywords(script_title, "")
-        if title_keywords and await _fetch_openverse_image(title_keywords, output_path, scene_num):
+        if title_keywords and await _fetch_openverse_image(title_keywords, output_path, scene_num, used_sources=used_sources):
             logger.info(f"Scene {scene_num}: Openverse provided image for title '{title_keywords}'.")
             return output_path
 
     # 3. Try Wikimedia Commons search
     logger.info(f"Scene {scene_num}: Searching Wikimedia Commons for '{keywords}'...")
-    if await _fetch_wikimedia_image(keywords, output_path):
+    if await _fetch_wikimedia_image(keywords, output_path, used_sources=used_sources):
         logger.info(f"Scene {scene_num}: Wikimedia provided image for '{keywords}'.")
         return output_path
 
-    # 4. High-quality HD stock photo fallback matching the specific topic
+    # 4. High-quality HD stock photo fallback matching the specific topic with unique image guarantee
     combined_text = f"{prompt} {narration} {script_title}".lower()
     if any(w in combined_text for w in ["car", "cars", "hypercar", "supercar", "auto", "vehicle", "ferrari", "bugatti", "rolls-royce", "porsche", "speed", "race", "motor"]):
         topic_key = "cars"
@@ -355,7 +407,11 @@ async def fetch_scene_image(
         topic_key = "general"
 
     photo_urls = FALLBACK_PHOTO_TOPICS.get(topic_key, FALLBACK_PHOTO_TOPICS["general"])
-    fallback_url = photo_urls[(scene_num - 1) % len(photo_urls)]
+    if used_sources is not None:
+        available_photos = [u for u in photo_urls if u not in used_sources]
+        fallback_url = available_photos[0] if available_photos else photo_urls[(scene_num - 1) % len(photo_urls)]
+    else:
+        fallback_url = photo_urls[(scene_num - 1) % len(photo_urls)]
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -364,6 +420,8 @@ async def fetch_scene_image(
                 with open(output_path, "wb") as f:
                     f.write(resp.content)
                 _ensure_1080p(output_path)
+                if used_sources is not None:
+                    used_sources.add(fallback_url)
                 logger.info(f"Scene {scene_num}: Applied topic-matched fallback for '{topic_key}'.")
                 return output_path
     except Exception as e:
@@ -418,10 +476,14 @@ def render_scene_clip(
     else:
         motion_expr = f"scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,zoompan=z='max(1.20-0.0012*on,1.0)':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps={fps}"
 
-    # Build filter chain with exact synced subtitles if srt available
+    # Build filter chain with exact synced subtitles if srt available (viral TikTok/Shorts yellow word burst)
     if srt_path and os.path.exists(srt_path):
         clean_srt = srt_path.replace("'", "\\'")
-        sub_filter = f",subtitles='{clean_srt}':force_style='FontSize=22,FontName=Arial,Bold=1,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3,Outline=1,Shadow=1,MarginV=35'"
+        sub_filter = (
+            f",subtitles='{clean_srt}':force_style="
+            f"'FontSize=28,FontName=Arial,Bold=1,PrimaryColour=&H0000FFFF,BackColour=&H80000000,"
+            f"BorderStyle=3,Outline=3,Shadow=2,Alignment=2,MarginV=55'"
+        )
         filter_expr = f"{motion_expr}{sub_filter}"
     else:
         filter_expr = motion_expr
@@ -530,6 +592,7 @@ async def generate_free_video(
         clip_paths: List[str] = []
         total_scenes = len(scenes)
         total_duration = 0.0
+        used_sources: set = set()
 
         for i, scene in enumerate(scenes):
             scene_num = scene.get("scene_number", i + 1)
@@ -552,7 +615,7 @@ async def generate_free_video(
             )
             total_duration += audio_duration
 
-            # 3. Fetch realistic clean scene image strictly matching script
+            # 3. Fetch realistic clean scene image strictly matching script (guaranteed unique per scene)
             image_file = os.path.join(tmp_dir, f"image_{scene_num}.jpg")
             await fetch_scene_image(
                 prompt=visual,
@@ -560,6 +623,7 @@ async def generate_free_video(
                 output_path=image_file,
                 scene_num=scene_num,
                 script_title=script.get("title", ""),
+                used_sources=used_sources,
             )
 
             # 4. Render Clip with dynamic Ken Burns motion and synchronized subtitles
