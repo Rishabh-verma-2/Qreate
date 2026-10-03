@@ -54,8 +54,9 @@ def get_purffle_cwd() -> str:
 def run_purffle_render(
     purffle_script_data: Dict[str, Any],
     aspect_ratio: str = "9:16",
-    timeout_seconds: int = 300,
+    timeout_seconds: int = 360,
     progress_callback: Optional[Callable[[int, str], None]] = None,
+    media_dir: Optional[str] = None,
 ) -> PurffleRenderResult:
     """Execute Purffle video rendering using the CLI in an isolated subprocess.
 
@@ -64,6 +65,7 @@ def run_purffle_render(
         aspect_ratio: Output aspect ratio ("9:16", "16:9", "1:1", "4:5").
         timeout_seconds: Subprocess timeout in seconds.
         progress_callback: Optional callback for progress percentages.
+        media_dir: Optional directory containing pre-sourced scene visual assets.
 
     Returns:
         PurffleRenderResult with status and MP4 details.
@@ -89,7 +91,30 @@ def run_purffle_render(
             "--no-upload",
             "--aspect",
             aspect_ratio,
+            "--resolution",
+            "1080x1920",
+            "--grade",
+            "cinematic",
+            "--caption-style",
+            "bold",
+            "--caption-position",
+            "center",
+            "--transition",
+            "random",
         ]
+
+        env = os.environ.copy()
+        env["CAPTION_STYLE"] = "bold"
+        env["CAPTION_POSITION"] = "center"
+        env["COLOR_GRADE"] = "cinematic"
+        env["KEN_BURNS"] = "true"
+        env["CAPTION_MAX_WORDS"] = "3"
+        env["CAPTION_UPPERCASE"] = "true"
+
+        if media_dir and os.path.isdir(media_dir):
+            cmd += ["--visuals", "local"]
+            env["MEDIA_DIR"] = str(Path(media_dir).resolve())
+            env["VISUAL_SOURCES"] = "local"
 
         if progress_callback:
             progress_callback(10, "Initializing PurffleShorts rendering pipeline...")
@@ -98,6 +123,7 @@ def run_purffle_render(
             process = subprocess.run(
                 cmd,
                 cwd=cwd,
+                env=env,
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,

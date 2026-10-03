@@ -27,10 +27,18 @@ class ProjectResponse(BaseModel):
 
 class SceneSchema(BaseModel):
     scene_number: int
-    duration_seconds: int = 10
+    duration_seconds: int = 5
     narration: str = ""
     visual_description: str = ""
     camera_notes: str = ""
+    visual_type: Optional[str] = None
+    visual_subject: Optional[str] = None
+    visual_action: Optional[str] = None
+    visual_motion: Optional[str] = None
+    transition: Optional[str] = None
+    emphasis_words: Optional[List[str]] = None
+    pacing: Optional[str] = None
+    shot_type: Optional[str] = None
 
 
 class ScriptGenerateRequest(BaseModel):

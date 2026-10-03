@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 import os
+import tempfile
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.core.config import get_settings
@@ -19,6 +20,7 @@ from app.services.purffle import (
     qreate_script_to_purffle,
     run_purffle_render,
     validate_purffle_mp4,
+    source_visuals_for_scenes,
 )
 from app.services.video_engine import generate_free_video, sync_audio_and_captions_to_video
 
@@ -162,7 +164,21 @@ async def _generate_via_purffle_engine(
 
     # script/adapter 25%
     await update_fn(progress=25)
-    purffle_data = qreate_script_to_purffle(script)
+
+    # Visual sourcing: download and format high-res 1080x1920 visuals for each scene
+    scenes = script.get("scenes") or []
+    topic = str(script.get("original_prompt") or script.get("title") or "Science explainer")
+    media_dir = os.path.join(tempfile.gettempdir(), f"purffle_media_{task_id}")
+
+    search_queries = None
+    try:
+        sourced = await source_visuals_for_scenes(scenes, topic, media_dir)
+        search_queries = [kw for kw, _ in sourced]
+        logger.info(f"[Task {task_id}] Sourced {len(sourced)} scene visuals into {media_dir}")
+    except Exception as v_err:
+        logger.warning(f"[Task {task_id}] Visual sourcing error: {v_err}. Continuing with fallback visuals.")
+
+    purffle_data = qreate_script_to_purffle(script, topic=topic, scene_search_queries=search_queries)
 
     # Purffle rendering 50-85%
     await update_fn(progress=50)
@@ -184,8 +200,9 @@ async def _generate_via_purffle_engine(
         run_purffle_render,
         purffle_script_data=purffle_data,
         aspect_ratio=aspect,
-        timeout_seconds=360,
+        timeout_seconds=420,
         progress_callback=_sync_progress_cb,
+        media_dir=media_dir,
     )
 
     if not result.ok or not result.mp4_path:

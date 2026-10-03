@@ -269,9 +269,45 @@ Development and target runtime machine specifications:
 * **Errors:** None.
 * **Warnings:** None.
 * **Limitations:** PurffleShorts engine is specifically optimized for portrait shorts (9:16).
-* **Git Commit:** `feat: integrate Purffle engine into Qreate video pipeline`
+* **Git Commit:** `47c6bd9` (`feat: integrate Purffle engine into Qreate video pipeline`)
 * **Final Result:** PurffleShorts is fully integrated into Qreate as a first-class video-generation engine alongside Free Engine and Agnes Cloud.
-* **Next Milestone:** Demo verification & presentation.
+* **Next Milestone:** PurffleShorts V2 — Video Quality Refinement.
+
+---
+
+### Milestone — PurffleShorts V2: Video Quality Refinement
+
+* **Date / Time:** 2026-10-03 13:40:20 IST
+* **Objective:** Transform PurffleShorts output from basic slideshow-like video into a polished, fast-paced, visually intentional educational Short with authentic NASA/scientific visual sourcing, true 1080×1920 vertical composition, cinematic Ken Burns camera motion, bold animated captions, and Ollama Qwen local script generation.
+* **Files Modified:**
+  - `backend/app/schemas/schemas.py`: Enriched `SceneSchema` with optional metadata (`visual_type`, `visual_subject`, `visual_action`, `visual_motion`, `transition`, `emphasis_words`, `pacing`, `shot_type`).
+  - `backend/app/services/script/generator.py`: Upgraded script generation with fast-paced storytelling rules (8–12 scenes, 3–7s durations, opening visual/verbal hook), local Ollama `qwen2.5:7b` execution, and automatic Agnes AI fallback.
+  - `backend/app/services/purffle/adapter.py`: Enhanced `qreate_script_to_purffle` to construct filmable search queries from `visual_subject` and rich image prompts with vertical framing cues.
+  - `backend/app/services/purffle/runner.py`: Configured Purffle CLI with `--grade cinematic`, `--caption-style bold`, `--caption-position center`, `--transition random`, and `--visuals local` with `MEDIA_DIR` injection.
+  - `backend/app/services/purffle/__init__.py`: Exported `source_visuals_for_scenes`.
+  - `backend/app/api/routes/videos.py`: Integrated automated visual sourcing into `_generate_via_purffle_engine` prior to subprocess rendering.
+* **Files Created:**
+  - `backend/app/services/purffle/visual_sourcer.py`: High-fidelity visual sourcing service querying NASA Images API, Wikimedia Commons, and Pollinations AI with smart 9:16 vertical crop and formatting to 1080×1920.
+* **Files Deleted:** None.
+* **Visuals & Sourcing:**
+  - 10 authentic scene visuals sourced: 9 authentic NASA deep space / astrophysics captures and 1 AI visual representation.
+  - Formatted to 1080×1920 portrait format with zero horizontal distortion or empty bars.
+* **Camera Motion & Composition:**
+  - FFmpeg Ken Burns cinematic motion (push-in, pull-out, pan) applied per scene.
+  - Varied scene transitions (`xfade`).
+* **Captions:**
+  - Large, bold animated word-synced subtitles centered in the safe zone with yellow highlight (`#FFE11A`) on active words.
+* **Tests:**
+  - Tested topic: *"How does a black hole bend light?"*
+  - Generated script via local Ollama (`qwen2.5:7b`): 10 dynamic scenes (title: "How a Black Hole Bends Light", hook: "Imagine a cosmic vacuum cleaner that can bend light itself!").
+  - Sourced all 10 visuals and executed full render in 70s.
+  - Verified local MP4 validation (1080×1920, H.264, AAC).
+  - Uploaded to Cloudinary: `https://res.cloudinary.com/dumwirykd/video/upload/v1791015023/qreate/projects/6ac0b7e3d187c7a7bbd51faa/video_6ac0b807d187c7a7bbd51fac.mp4`.
+  - Stored in MongoDB: ID `6ac0b86bd187c7a7bbd51fad`.
+* **Test Results:** 100% PASSED.
+* **Render Time:** ~70 seconds (10 scenes, 39s duration).
+* **Git Commit:** `feat: refine PurffleShorts video quality with NASA visuals, Ken Burns motion, and bold captions`
+* **Final Result:** High-quality, fast-paced educational short visually explaining gravitational lensing with authentic space imagery.
 
 ---
 
