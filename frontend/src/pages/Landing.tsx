@@ -143,7 +143,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col selection:bg-primary/20 selection:text-primary">
       {/* ── Fixed Navigation Bar ────────────────────────────────────────── */}
-      <header className="fixed top-0 inset-x-0 z-50 h-16 border-b border-border/80 bg-background/80 backdrop-blur-md">
+      <header className="fixed top-0 inset-x-0 z-40 h-16 border-b border-border/80 bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto h-full flex items-center justify-between px-6">
           {/* Logo */}
           <div

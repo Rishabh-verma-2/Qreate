@@ -83,13 +83,13 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-md animate-fade-in">
       {/* Backdrop overlay dismiss */}
       <div className="fixed inset-0 -z-10" onClick={closeAuthModal} />
 
       {/* Modal Dialog Card */}
       <div
-        className="relative w-full max-w-md max-h-[92vh] flex flex-col bg-card border border-border rounded-3xl shadow-2xl overflow-hidden animate-scale-up"
+        className="relative w-full max-w-md max-h-[88vh] my-auto flex flex-col bg-card border border-border rounded-3xl shadow-2xl overflow-hidden animate-scale-up z-20"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Glow Header Top Line */}
