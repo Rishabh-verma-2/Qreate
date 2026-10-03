@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     AGNES_VIDEO_MODEL: str = "agnes-video-2.5-flash"
     AGNES_VIDEO_SIZE: str = "720P"
 
+    # Image generation
+    AGNES_IMAGE_MODEL: str = "agnes-image-2.5-flash"
+
     # Script generation
     AGNES_CHAT_MODEL: str = "agnes-2.5-flash"
 
@@ -47,3 +50,6 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+
+settings = get_settings()

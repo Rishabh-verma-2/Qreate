@@ -21,6 +21,7 @@ import httpx
 import imageio_ffmpeg
 from PIL import Image, ImageDraw
 
+from app.core.config import settings
 from app.database import crud
 from app.services.cloudinary.uploader import upload_video_file
 
@@ -35,14 +36,42 @@ DEFAULT_VOICES = {
     "dramatic": "en-GB-RyanNeural",
 }
 
-# Thematic photorealistic stock photos for reliable fallback
+# Thematic photorealistic stock photos for reliable fallback across diverse topics
 FALLBACK_PHOTO_TOPICS = {
+    "cars": [
+        "https://images.unsplash.com/photo-1617788138017-80ad40651399?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=1920&h=1080&fit=crop&q=80",
+    ],
+    "tech": [
+        "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=1920&h=1080&fit=crop&q=80",
+    ],
+    "business": [
+        "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1920&h=1080&fit=crop&q=80",
+    ],
+    "fitness": [
+        "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=1920&h=1080&fit=crop&q=80",
+    ],
     "food": [
         "https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=1920&h=1080&fit=crop&q=80",
         "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=1920&h=1080&fit=crop&q=80",
         "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=1920&h=1080&fit=crop&q=80",
         "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=1920&h=1080&fit=crop&q=80",
         "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=1920&h=1080&fit=crop&q=80",
+    ],
+    "travel": [
+        "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1920&h=1080&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1920&h=1080&fit=crop&q=80",
     ],
     "general": [
         "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&h=1080&fit=crop&q=80",
@@ -67,9 +96,35 @@ def _format_srt_time(seconds: float) -> str:
     return f"{hours:02d}:{mins:02d}:{secs:02d},{millis:03d}"
 
 
-def _clean_visual_prompt(visual_description: str, narration: str) -> str:
+def _extract_search_keywords(visual_description: str, narration: str, script_title: str = "") -> str:
+    """Extract clean subject search keywords for Openverse and Wikimedia search."""
+    text = visual_description.strip() or narration.strip()
+    # Strip camera directions, overlay instructions, transitions, prices
+    patterns = [
+        r"(?i)\b(cut to|the presenter is shown|a presenter|close-up shot of|close-up of|medium shot of|wide shot of|slow cinematic pan across|slow pan across|dark moody reveal of|dramatic reveal of|montage of|quick cuts across|tracking shot of|heroic pose against|shown in|shown from)\b",
+        r"(?i)\b(text overlay|text labels|overlay subtle text|overlay|screen shows|lower third)[^.]*?(?=\.|\$|\n|$)",
+        r"[\$€£]\d+[\w\s—–-]*",
+        r"#\d+",
+        r"[-—–:]+",
+    ]
+    cleaned = text
+    for p in patterns:
+        cleaned = re.sub(p, " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    stopwords = {
+        "the", "a", "an", "in", "on", "at", "with", "from", "of", "and", "for",
+        "is", "are", "shown", "each", "all", "its", "their", "this", "that",
+        "these", "those", "into", "over", "under", "next", "to", "across", "heroic"
+    }
+    words = [w for w in cleaned.split() if len(w) > 1 and w.lower() not in stopwords]
+    query = " ".join(words[:4])
+    return query or script_title or "cinematic"
+
+
+def _clean_visual_prompt(visual_description: str, narration: str, script_title: str = "") -> str:
     """Transform script stage directions into a realistic AI image prompt."""
-    text = visual_description.strip() or narration.strip() or "Cinematic scene"
+    text = visual_description.strip() or narration.strip() or script_title or "Cinematic scene"
     patterns = [
         r"^(cut to|the presenter is shown|a presenter|close-up shot of|close-up of|medium shot of|wide shot of|overlay subtle text[^\.\,]*|slow dolly[^\.\,]*|camera notes[^\.\,]*)\s*",
         r"[-—–]+",
@@ -80,9 +135,23 @@ def _clean_visual_prompt(visual_description: str, narration: str) -> str:
         cleaned = re.sub(p, " ", cleaned, flags=re.IGNORECASE)
 
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    words = cleaned.split()[:18]
+    words = cleaned.split()[:20]
     prompt_subject = " ".join(words)
     return f"{prompt_subject}, photorealistic, 8k resolution, cinematic 35mm film photography, natural lighting, highly detailed"
+
+
+def _get_media_duration(file_path: str) -> float:
+    """Probe audio/video duration using FFmpeg."""
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    try:
+        res = subprocess.run([ffmpeg_exe, "-i", file_path], capture_output=True, text=True)
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", res.stderr)
+        if match:
+            h, m, s = match.groups()
+            return int(h) * 3600 + int(m) * 60 + float(s)
+    except Exception:
+        pass
+    return 5.0
 
 
 async def generate_scene_audio_and_subtitles(
@@ -114,7 +183,6 @@ async def generate_scene_audio_and_subtitles(
                         )
                         idx += 1
 
-        # If no SentenceBoundary was emitted, create single subtitle spanning entire audio
         duration = _get_media_duration(audio_path)
         if not sub_entries and clean_text:
             sub_entries.append(
@@ -130,18 +198,99 @@ async def generate_scene_audio_and_subtitles(
         return False, 5.0
 
 
-def _get_media_duration(file_path: str) -> float:
-    """Probe audio/video duration using FFmpeg."""
-    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+async def _generate_agnes_ai_image(prompt: str, output_path: str) -> bool:
+    """Generate custom visual via Agnes AI image generation API."""
+    if not settings.AGNES_API_KEY:
+        return False
+
+    url = f"{settings.AGNES_BASE_URL.rstrip('/')}/v1/images/generations"
+    headers = {
+        "Authorization": f"Bearer {settings.AGNES_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": settings.AGNES_IMAGE_MODEL or "agnes-image-2.5-flash",
+        "prompt": prompt,
+        "size": "1024x1024",
+        "n": 1,
+    }
+
     try:
-        res = subprocess.run([ffmpeg_exe, "-i", file_path], capture_output=True, text=True)
-        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", res.stderr)
-        if match:
-            h, m, s = match.groups()
-            return int(h) * 3600 + int(m) * 60 + float(s)
-    except Exception:
-        pass
-    return 5.0
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data.get("data") or []
+                if items and items[0].get("url"):
+                    img_url = items[0]["url"]
+                    dl_resp = await client.get(img_url, timeout=15.0)
+                    if dl_resp.status_code == 200 and len(dl_resp.content) > 5000:
+                        with open(output_path, "wb") as f:
+                            f.write(dl_resp.content)
+                        _ensure_1080p(output_path)
+                        return True
+            else:
+                logger.info(f"Agnes image API returned status {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"Agnes image generation skipped: {e}")
+    return False
+
+
+async def _fetch_openverse_image(keywords: str, output_path: str, scene_num: int) -> bool:
+    """Fetch high-res Creative Commons photograph matching exact keywords from Openverse."""
+    url = f"https://api.openverse.org/v1/images/?q={urllib.parse.quote(keywords)}&page_size=6"
+    headers = {"User-Agent": "QreateApp/1.0 (free-generator@qreate.local)"}
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results") or []
+                if results:
+                    choice = results[(scene_num - 1) % len(results)]
+                    img_url = choice.get("url")
+                    if img_url:
+                        dl_resp = await client.get(img_url, headers=headers, timeout=12.0, follow_redirects=True)
+                        if dl_resp.status_code == 200 and len(dl_resp.content) > 5000:
+                            with open(output_path, "wb") as f:
+                                f.write(dl_resp.content)
+                            _ensure_1080p(output_path)
+                            return True
+    except Exception as e:
+        logger.info(f"Openverse search skipped for '{keywords}': {e}")
+    return False
+
+
+async def _fetch_wikimedia_image(keywords: str, output_path: str) -> bool:
+    """Fetch high-res photograph from Wikimedia Commons."""
+    url = (
+        f"https://commons.wikimedia.org/w/api.php?action=query&generator=search"
+        f"&gsrnamespace=6&gsrsearch={urllib.parse.quote(keywords)}&gsrlimit=3"
+        f"&prop=imageinfo&iiprop=url&iiurlwidth=1920&format=json"
+    )
+    headers = {"User-Agent": "QreateApp/1.0 (contact@qreate.local)"}
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                pages = data.get("query", {}).get("pages", {})
+                for pid, p in pages.items():
+                    info_list = p.get("imageinfo") or []
+                    if info_list:
+                        thumb = info_list[0].get("thumburl") or info_list[0].get("url")
+                        if thumb and any(ext in thumb.lower() for ext in [".jpg", ".jpeg", ".png"]):
+                            dl_resp = await client.get(thumb, headers=headers, timeout=12.0, follow_redirects=True)
+                            if dl_resp.status_code == 200 and len(dl_resp.content) > 5000:
+                                with open(output_path, "wb") as f:
+                                    f.write(dl_resp.content)
+                                _ensure_1080p(output_path)
+                                return True
+    except Exception as e:
+        logger.info(f"Wikimedia search skipped for '{keywords}': {e}")
+    return False
 
 
 async def fetch_scene_image(
@@ -149,27 +298,62 @@ async def fetch_scene_image(
     narration: str,
     output_path: str,
     scene_num: int,
+    script_title: str = "",
 ) -> str:
-    """Fetch realistic 1920x1080 clean scene image."""
-    clean_prompt = _clean_visual_prompt(prompt, narration)
-    encoded = urllib.parse.quote(clean_prompt)
-    seed = scene_num * 123 + 45
-    pollinations_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1920&height=1080&nologo=true&seed={seed}"
+    """Fetch realistic 1920x1080 scene image strictly matched to the script.
 
-    # 1. Try Pollinations AI with clean prompt
-    try:
-        async with httpx.AsyncClient(timeout=14.0) as client:
-            resp = await client.get(pollinations_url, follow_redirects=True)
-            if resp.status_code == 200 and len(resp.content) > 5000:
-                with open(output_path, "wb") as f:
-                    f.write(resp.content)
-                _ensure_1080p(output_path)
-                return output_path
-    except Exception as e:
-        logger.info(f"Pollinations skipped for scene {scene_num} ({e}), using HD stock photo fallback")
+    Order of strategy:
+      1. Agnes AI image model (creates custom photorealistic AI image for scene).
+      2. Openverse API (millions of free CC photographs of cars, tech, food, sports, etc.).
+      3. Wikimedia Commons API (high-resolution encyclopedic photographs).
+      4. Topic-Aware Stock Fallback (Unsplash curated by topic: cars, tech, business, etc.).
+      5. Local canvas (offline guarantee).
+    """
+    clean_ai_prompt = _clean_visual_prompt(prompt, narration, script_title)
+    keywords = _extract_search_keywords(prompt, narration, script_title)
 
-    # 2. High-quality HD stock photo fallback matching the topic
-    topic_key = "food" if any(w in (prompt + narration).lower() for w in ["food", "diet", "healthy", "eat", "cook", "vegetable", "fruit", "meal"]) else "general"
+    # 1. Try Agnes AI Image Model
+    logger.info(f"Scene {scene_num}: Trying Agnes AI image generation...")
+    if await _generate_agnes_ai_image(clean_ai_prompt, output_path):
+        logger.info(f"Scene {scene_num}: Agnes AI successfully generated image.")
+        return output_path
+
+    # 2. Try Openverse CC live search with extracted keywords
+    logger.info(f"Scene {scene_num}: Searching Openverse for '{keywords}'...")
+    if await _fetch_openverse_image(keywords, output_path, scene_num):
+        logger.info(f"Scene {scene_num}: Openverse provided image for '{keywords}'.")
+        return output_path
+
+    # If specific keywords yielded no results, try script title keywords
+    if script_title and script_title != keywords:
+        title_keywords = _extract_search_keywords(script_title, "")
+        if title_keywords and await _fetch_openverse_image(title_keywords, output_path, scene_num):
+            logger.info(f"Scene {scene_num}: Openverse provided image for title '{title_keywords}'.")
+            return output_path
+
+    # 3. Try Wikimedia Commons search
+    logger.info(f"Scene {scene_num}: Searching Wikimedia Commons for '{keywords}'...")
+    if await _fetch_wikimedia_image(keywords, output_path):
+        logger.info(f"Scene {scene_num}: Wikimedia provided image for '{keywords}'.")
+        return output_path
+
+    # 4. High-quality HD stock photo fallback matching the specific topic
+    combined_text = f"{prompt} {narration} {script_title}".lower()
+    if any(w in combined_text for w in ["car", "cars", "hypercar", "supercar", "auto", "vehicle", "ferrari", "bugatti", "rolls-royce", "porsche", "speed", "race", "motor"]):
+        topic_key = "cars"
+    elif any(w in combined_text for w in ["tech", "ai", "robot", "software", "computer", "code", "cyber", "phone", "future"]):
+        topic_key = "tech"
+    elif any(w in combined_text for w in ["business", "money", "dollar", "wealth", "million", "finance", "crypto", "bitcoin", "invest"]):
+        topic_key = "business"
+    elif any(w in combined_text for w in ["gym", "workout", "fitness", "muscle", "exercise", "athlete", "sport", "run"]):
+        topic_key = "fitness"
+    elif any(w in combined_text for w in ["food", "diet", "healthy", "eat", "cook", "vegetable", "fruit", "meal", "recipe", "kitchen"]):
+        topic_key = "food"
+    elif any(w in combined_text for w in ["travel", "city", "flight", "beach", "hotel", "explore", "vacation"]):
+        topic_key = "travel"
+    else:
+        topic_key = "general"
+
     photo_urls = FALLBACK_PHOTO_TOPICS.get(topic_key, FALLBACK_PHOTO_TOPICS["general"])
     fallback_url = photo_urls[(scene_num - 1) % len(photo_urls)]
 
@@ -180,11 +364,12 @@ async def fetch_scene_image(
                 with open(output_path, "wb") as f:
                     f.write(resp.content)
                 _ensure_1080p(output_path)
+                logger.info(f"Scene {scene_num}: Applied topic-matched fallback for '{topic_key}'.")
                 return output_path
     except Exception as e:
         logger.warning(f"Stock photo fallback failed: {e}")
 
-    # 3. Local graceful fallback if offline
+    # 5. Local graceful fallback if offline
     _create_local_canvas(output_path)
     return output_path
 
@@ -367,13 +552,14 @@ async def generate_free_video(
             )
             total_duration += audio_duration
 
-            # 3. Fetch realistic clean scene image
+            # 3. Fetch realistic clean scene image strictly matching script
             image_file = os.path.join(tmp_dir, f"image_{scene_num}.jpg")
             await fetch_scene_image(
                 prompt=visual,
                 narration=narration,
                 output_path=image_file,
                 scene_num=scene_num,
+                script_title=script.get("title", ""),
             )
 
             # 4. Render Clip with dynamic Ken Burns motion and synchronized subtitles
