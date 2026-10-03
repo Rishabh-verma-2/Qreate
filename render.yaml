@@ -34,3 +34,5 @@ services:
         value: "1"
       - key: SCENE_RENDER_PARALLELISM
         value: "1"
+      - key: VISUAL_RERANK        # free plan has 512 MB RAM — CLIP needs ~1 GB
+        value: "false"
