@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Video,
@@ -20,20 +20,11 @@ import { Select } from '../components/ui/Input';
 import { StatusBadge } from '../components/ui/Badge';
 
 const ASPECT_RATIO_OPTIONS = [
-  { value: '16:9', label: '16:9 — Landscape (1280×704)' },
-  { value: '9:16', label: '9:16 — Portrait (720×1280)' },
+  { value: '9:16', label: '9:16 — Vertical (Shorts, Reels, TikTok)' },
+  { value: '16:9', label: '16:9 — Widescreen (YouTube, Landscape)' },
   { value: '1:1', label: '1:1 — Square (720×720)' },
   { value: '4:3', label: '4:3 (960×720)' },
   { value: '3:4', label: '3:4 (720×960)' },
-];
-
-const DURATION_OPTIONS = [
-  { value: '4', label: '4 seconds' },
-  { value: '5', label: '5 seconds' },
-  { value: '6', label: '6 seconds' },
-  { value: '8', label: '8 seconds' },
-  { value: '10', label: '10 seconds' },
-  { value: '12', label: '12 seconds' },
 ];
 
 const ENGINE_OPTIONS = [
@@ -55,11 +46,25 @@ export default function GenerateVideo() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [task, setTask] = useState<VideoTask | null>(null);
-  const [aspectRatio, setAspectRatio] = useState('9:16');
-  const [durationSeconds, setDurationSeconds] = useState('5');
-  const [engine, setEngine] = useState('purffle');
+  const [aspectRatio, setAspectRatio] = useState(() => {
+    const stateAspect = (location.state as { aspectRatio?: string })?.aspectRatio;
+    return stateAspect || localStorage.getItem('qreate_pref_aspect') || '9:16';
+  });
+  const [engine, setEngine] = useState(() => {
+    return localStorage.getItem('qreate_pref_engine') || 'purffle';
+  });
   const [error, setError] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Auto-calculate exact runtime from the approved script
+  const totalScriptDuration = useMemo(() => {
+    if (!script) return 60;
+    if (script.duration_seconds && script.duration_seconds > 0) return script.duration_seconds;
+    if (script.scenes && script.scenes.length > 0) {
+      return script.scenes.reduce((sum, s) => sum + (s.duration_seconds || 6), 0);
+    }
+    return 60;
+  }, [script]);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -100,7 +105,7 @@ export default function GenerateVideo() {
         project_id: script.project_id,
         script_id: scriptId,
         mode: 'text',
-        duration_seconds: parseInt(durationSeconds),
+        duration_seconds: totalScriptDuration,
         aspect_ratio: aspectRatio,
         engine: engine,
       });
@@ -134,14 +139,43 @@ export default function GenerateVideo() {
 
       {/* Script Summary */}
       {script && (
-        <Card className="mb-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Approved Script</h2>
-          <p className="font-semibold">{script.title}</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {script.scenes.length} scenes · {script.language} · {script.tone}
-          </p>
+        <Card className="mb-6 border border-border/80 shadow-xs">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Approved Script
+            </h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+              Ready to Render
+            </span>
+          </div>
+
+          <h3 className="text-lg font-bold text-foreground">{script.title}</h3>
+
+          <div className="flex flex-wrap items-center gap-2 mt-2.5">
+            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/20 flex items-center gap-1.5 shadow-xs">
+              <Clock className="w-3.5 h-3.5" />
+              Duration: ~{totalScriptDuration}s
+            </span>
+            <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-muted text-foreground">
+              {script.scenes.length} Scenes
+            </span>
+            <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-muted text-muted-foreground">
+              {script.language}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-muted text-muted-foreground">
+              {Array.isArray(script.tone)
+                ? script.tone.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
+                : typeof script.tone === 'string'
+                ? script.tone
+                    .split(',')
+                    .map((t) => t.trim().charAt(0).toUpperCase() + t.trim().slice(1))
+                    .join(', ')
+                : 'Professional'}
+            </span>
+          </div>
+
           {script.hook && (
-            <p className="text-sm text-muted-foreground mt-2 italic border-l-2 border-primary/30 pl-3">
+            <p className="text-sm text-muted-foreground mt-3 italic border-l-2 border-primary/40 pl-3">
               "{script.hook}"
             </p>
           )}
@@ -150,8 +184,12 @@ export default function GenerateVideo() {
 
       {/* Video Settings */}
       {!task && (
-        <Card className="mb-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Video Settings</h2>
+        <Card className="mb-6 border border-border/80 shadow-xs">
+          <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
+            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Video Settings</h2>
+            <span className="text-xs text-muted-foreground">Visual Directing</span>
+          </div>
+
           <div className="grid sm:grid-cols-2 gap-4">
             <Select
               label="Aspect Ratio"
@@ -159,13 +197,22 @@ export default function GenerateVideo() {
               onChange={(e) => setAspectRatio(e.target.value)}
               options={ASPECT_RATIO_OPTIONS}
             />
-            <Select
-              label="Duration"
-              value={durationSeconds}
-              onChange={(e) => setDurationSeconds(e.target.value)}
-              options={DURATION_OPTIONS}
-            />
+
+            {/* Synced duration display */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-foreground">Video Duration</label>
+              <div className="h-10 px-3.5 rounded-lg border border-border bg-muted/40 flex items-center justify-between text-sm text-foreground">
+                <span className="font-semibold flex items-center gap-1.5 text-primary">
+                  <Clock className="w-4 h-4" />
+                  ~{totalScriptDuration} seconds
+                </span>
+                <span className="text-[11px] text-muted-foreground font-medium bg-background px-2 py-0.5 rounded border border-border">
+                  Synced to script
+                </span>
+              </div>
+            </div>
           </div>
+
           <div className="mt-4">
             <Select
               label="Generation Engine"
@@ -174,7 +221,8 @@ export default function GenerateVideo() {
               options={ENGINE_OPTIONS}
             />
           </div>
-          <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
+
+          <div className="mt-4 p-3.5 rounded-xl bg-muted/50 text-sm text-muted-foreground border border-border/60">
             {engine === 'purffle' ? (
               <span>🎬 <strong className="text-purple-400">PurffleShorts V3:</strong> High-impact 9:16 vertical shorts with authentic NASA/Wikimedia imagery, procedural motion graphics diagrams, and bold subtitles.</span>
             ) : engine === 'free' ? (

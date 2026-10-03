@@ -8,6 +8,8 @@ import CreateVideo from './pages/CreateVideo';
 import ScriptEditor from './pages/ScriptEditor';
 import GenerateVideo from './pages/GenerateVideo';
 import VideoLibrary from './pages/VideoLibrary';
+import Profile from './pages/Profile';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import AuthModal from './components/auth/AuthModal';
@@ -22,22 +24,25 @@ function App() {
             {/* Landing page — no layout */}
             <Route path="/" element={<Landing />} />
 
-            {/* App routes — with sidebar layout */}
+            {/* App routes — guarded by ProtectedRoute */}
             <Route
               path="/*"
               element={
-                <AppLayout>
-                  <Routes>
-                    <Route path="dashboard" element={<Dashboard />} />
-                    <Route path="projects" element={<Projects />} />
-                    <Route path="projects/:projectId" element={<ProjectDetail />} />
-                    <Route path="create" element={<CreateVideo />} />
-                    <Route path="scripts/:scriptId" element={<ScriptEditor />} />
-                    <Route path="generate-video/:scriptId" element={<GenerateVideo />} />
-                    <Route path="library" element={<VideoLibrary />} />
-                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                  </Routes>
-                </AppLayout>
+                <ProtectedRoute>
+                  <AppLayout>
+                    <Routes>
+                      <Route path="dashboard" element={<Dashboard />} />
+                      <Route path="projects" element={<Projects />} />
+                      <Route path="projects/:projectId" element={<ProjectDetail />} />
+                      <Route path="create" element={<CreateVideo />} />
+                      <Route path="scripts/:scriptId" element={<ScriptEditor />} />
+                      <Route path="generate-video/:scriptId" element={<GenerateVideo />} />
+                      <Route path="library" element={<VideoLibrary />} />
+                      <Route path="profile" element={<Profile />} />
+                      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                    </Routes>
+                  </AppLayout>
+                </ProtectedRoute>
               }
             />
           </Routes>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Save,
   RefreshCw,
@@ -20,6 +20,7 @@ import { Card } from '../components/ui/Card';
 export default function ScriptEditor() {
   const { scriptId } = useParams<{ scriptId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [script, setScript] = useState<Script | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +119,13 @@ export default function ScriptEditor() {
     try {
       if (dirty) await handleSave();
       await scriptsApi.update(scriptId, { approved: true });
-      navigate(`/generate-video/${scriptId}`, { state: { projectId: script.project_id } });
+      const stateAspect = (location.state as { aspectRatio?: string })?.aspectRatio;
+      navigate(`/generate-video/${scriptId}`, {
+        state: {
+          projectId: script.project_id,
+          aspectRatio: stateAspect,
+        },
+      });
     } catch (err) {
       setError((err as Error).message);
     } finally {
