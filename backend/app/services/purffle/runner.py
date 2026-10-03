@@ -98,18 +98,23 @@ def run_purffle_render(
             "--caption-style",
             "bold",
             "--caption-position",
-            "center",
+            "lower",
             "--transition",
-            "random",
+            "zoomin",
         ]
 
         env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
         env["CAPTION_STYLE"] = "bold"
-        env["CAPTION_POSITION"] = "center"
+        env["CAPTION_POSITION"] = "lower"
         env["COLOR_GRADE"] = "cinematic"
         env["KEN_BURNS"] = "true"
         env["CAPTION_MAX_WORDS"] = "3"
         env["CAPTION_UPPERCASE"] = "true"
+        env["WATERMARK"] = "none"
+        env["CHANNEL_NAME"] = ""
+        env["END_CTA"] = ""
 
         if media_dir and os.path.isdir(media_dir):
             cmd += ["--visuals", "local"]

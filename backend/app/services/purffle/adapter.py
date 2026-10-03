@@ -102,11 +102,46 @@ def qreate_script_to_purffle(
 
         image_prompt = _clean_image_prompt(visual_desc, narration, visual_type=v_type, shot_type=shot)
 
+        c_key = scene.get("concept_key")
+        core_claim = scene.get("core_claim")
+        visual_goal = scene.get("visual_goal")
+        action = str(scene.get("visual_action") or "").strip()
+        comp = str(scene.get("composition") or "").strip()
+        anim_seq = scene.get("animation_sequence") or ([action] if action else [])
+        supp_text = str(scene.get("supporting_text") or "").strip()
+        trans = str(scene.get("transition_to_next") or "").strip()
+        bg_family = str(scene.get("background_family") or "clean_studio").strip()
+
+        # Semantic Diversity & Relevance enforcement:
+        # If previous scene used the exact same composition type, avoid repetitive templates
+        if i > 0 and comp:
+            prev_comp = purffle_scenes[-1].composition
+            if comp == prev_comp and comp.endswith("PROCESS"):
+                # A process was just shown; switch to Physical Demo, Object Interaction, or Hero Visual
+                act_lower = action.lower()
+                if any(w in act_lower for w in ["interact", "hit", "reach", "send", "receive", "connect"]):
+                    comp = "K_OBJECT_INTERACTION"
+                elif any(w in act_lower for w in ["move", "push", "pull", "fall", "thrust", "force", "lift"]):
+                    comp = "B_PHYSICAL_DEMO"
+                else:
+                    comp = "A_HERO_VISUAL"
+
         purffle_scenes.append(PurffleScene(
             narration=narration,
             search_query=search_query,
             image_prompt=image_prompt,
             speaker="A",
+            visual_type=v_type or None,
+            concept_key=c_key or None,
+            core_claim=core_claim or None,
+            visual_goal=visual_goal or None,
+            visual_subject=subject or None,
+            visual_action=action or None,
+            composition=comp or None,
+            animation_sequence=anim_seq,
+            supporting_text=supp_text or None,
+            transition_to_next=trans or None,
+            background_family=bg_family or "clean_studio",
         ))
 
     description = f"{title}\n\n{raw_hook}"

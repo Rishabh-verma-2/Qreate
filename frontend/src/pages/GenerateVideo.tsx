@@ -10,36 +10,26 @@ import {
   ExternalLink,
   ChevronRight,
 } from 'lucide-react';
-import { scriptsApi, videosApi } from '../services/api';
+import { scriptsApi, videosApi, projectsApi } from '../services/api';
 import type { Script, VideoTask } from '../types';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Select } from '../components/ui/Input';
 import { StatusBadge } from '../components/ui/Badge';
 
-const ASPECT_RATIO_OPTIONS = [
-  { value: '16:9', label: '16:9 — Landscape (1280×704)' },
-  { value: '9:16', label: '9:16 — Portrait (720×1280)' },
-  { value: '1:1', label: '1:1 — Square (720×720)' },
-  { value: '4:3', label: '4:3 (960×720)' },
-  { value: '3:4', label: '3:4 (720×960)' },
-];
-
+// PurffleShorts V3 — only duration is user-configurable
 const DURATION_OPTIONS = [
-  { value: '4', label: '4 seconds' },
-  { value: '5', label: '5 seconds' },
-  { value: '6', label: '6 seconds' },
-  { value: '8', label: '8 seconds' },
+  { value: '4',  label: '4 seconds'  },
+  { value: '5',  label: '5 seconds'  },
+  { value: '6',  label: '6 seconds'  },
+  { value: '8',  label: '8 seconds'  },
   { value: '10', label: '10 seconds' },
   { value: '12', label: '12 seconds' },
 ];
 
-const ENGINE_OPTIONS = [
-  { value: 'free', label: '⚡ Free AI Multi-Scene Engine (Neural Voice + Visuals — 100% Free)' },
-  { value: 'purffle', label: '🎬 PurffleShorts (9:16)' },
-  { value: 'auto', label: '🔄 Auto (Try Agnes AI, fallback to Free Engine if rate-limited)' },
-  { value: 'agnes', label: '🤖 Agnes Video Generator (Requires Token Plan on Agnes)' },
-];
+// Always fixed — never exposed to the user
+const FIXED_ENGINE       = 'purffle' as const;
+const FIXED_ASPECT_RATIO = '9:16'    as const;
 
 const POLL_INTERVAL = 4000; // ms
 
@@ -53,16 +43,32 @@ export default function GenerateVideo() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [task, setTask] = useState<VideoTask | null>(null);
-  const [aspectRatio, setAspectRatio] = useState('16:9');
   const [durationSeconds, setDurationSeconds] = useState('5');
-  const [engine, setEngine] = useState('free');
   const [error, setError] = useState('');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!scriptId) return;
-    scriptsApi.get(scriptId).then(setScript).catch(console.error).finally(() => setLoading(false));
+    scriptsApi.get(scriptId).then(async (s) => {
+      setScript(s);
+      if (s?.project_id) {
+        try {
+          const proj = await projectsApi.get(s.project_id);
+          const tasks: VideoTask[] = proj.video_tasks || [];
+          const scriptTasks = tasks.filter((t) => t.script_id === scriptId);
+          if (scriptTasks.length > 0) {
+            const latest = scriptTasks[scriptTasks.length - 1];
+            setTask(latest);
+            if (latest.status === 'in_progress' || latest.status === 'queued' || latest.status === 'pending') {
+              startPolling(latest.id);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load existing task:', e);
+        }
+      }
+    }).catch(console.error).finally(() => setLoading(false));
     return () => stopPolling();
   }, [scriptId]);
 
@@ -98,8 +104,8 @@ export default function GenerateVideo() {
         script_id: scriptId,
         mode: 'text',
         duration_seconds: parseInt(durationSeconds),
-        aspect_ratio: aspectRatio,
-        engine: engine,
+        aspect_ratio: FIXED_ASPECT_RATIO,
+        engine: FIXED_ENGINE,
       });
       setTask(createdTask);
       if (createdTask.status !== 'completed' && createdTask.status !== 'failed') {
@@ -135,7 +141,7 @@ export default function GenerateVideo() {
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Approved Script</h2>
           <p className="font-semibold">{script.title}</p>
           <p className="text-sm text-muted-foreground mt-1">
-            {script.scenes.length} scenes · {script.language} · {script.tone}
+            {script.scenes.length} scenes · {script.language} · {Array.isArray(script.tone) ? script.tone.join(', ') : script.tone}
           </p>
           {script.hook && (
             <p className="text-sm text-muted-foreground mt-2 italic border-l-2 border-primary/30 pl-3">
@@ -145,42 +151,35 @@ export default function GenerateVideo() {
         </Card>
       )}
 
-      {/* Video Settings */}
+      {/* Video Settings — PurffleShorts V3 only */}
       {!task && (
         <Card className="mb-6">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Video Settings</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Select
-              label="Aspect Ratio"
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value)}
-              options={ASPECT_RATIO_OPTIONS}
-            />
-            <Select
-              label="Duration"
-              value={durationSeconds}
-              onChange={(e) => setDurationSeconds(e.target.value)}
-              options={DURATION_OPTIONS}
-            />
+
+          {/* Locked engine badge */}
+          <div className="flex items-center gap-3 mb-4 p-3 rounded-lg border border-purple-500/30 bg-purple-500/5">
+            <span className="text-xl">🎬</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-purple-300">PurffleShorts V3</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                9:16 Portrait · Qwen scene generation · V3 motion graphics · Cloudinary delivery
+              </p>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium border border-purple-500/30">
+              Active
+            </span>
           </div>
-          <div className="mt-4">
-            <Select
-              label="Generation Engine"
-              value={engine}
-              onChange={(e) => setEngine(e.target.value)}
-              options={ENGINE_OPTIONS}
-            />
-          </div>
-          <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-            {engine === 'purffle' ? (
-              <span>🎬 <strong className="text-purple-400">PurffleShorts (9:16):</strong> Generates fast portrait Shorts with neural Edge-TTS voiceover, background visuals, and word-synced burnt captions.</span>
-            ) : engine === 'free' ? (
-              <span>⚡ <strong className="text-green-400">100% Free Engine:</strong> Generates multi-scene neural narration via Edge-TTS and scene visuals, exported directly to Cloudinary.</span>
-            ) : engine === 'auto' ? (
-              <span>🔄 <strong className="text-primary">Auto Engine:</strong> Tries Agnes AI GPU rendering; if Agnes rate limits or queue is full, seamlessly uses the Free Engine.</span>
-            ) : (
-              <span>🤖 <strong className="text-foreground">Agnes AI:</strong> Direct Agnes cloud GPU rendering (requires paid token plan on Agnes platform).</span>
-            )}
+
+          {/* Duration — the only user-configurable setting */}
+          <Select
+            label="Scene Duration"
+            value={durationSeconds}
+            onChange={(e) => setDurationSeconds(e.target.value)}
+            options={DURATION_OPTIONS}
+          />
+
+          <div className="mt-3 text-xs text-muted-foreground">
+            Format locked to <strong className="text-foreground">1080×1920 (9:16)</strong> · Engine locked to <strong className="text-foreground">PurffleShorts V3</strong>
           </div>
         </Card>
       )}
@@ -220,26 +219,26 @@ export default function GenerateVideo() {
           {/* Status messages */}
           {task.status === 'pending' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="w-4 h-4 animate-pulse" />
-              Connecting to Agnes AI...
+              <Clock className="w-4 h-4 animate-pulse text-purple-400" />
+              Preparing PurffleShorts V3 rendering pipeline...
             </div>
           )}
           {task.status === 'queued' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              In queue — Agnes is processing your request...
+              <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+              In queue — PurffleShorts V3 is preparing Qwen scenes & motion graphics...
             </div>
           )}
           {task.status === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Generating video... This typically takes 2–3 minutes.
+              <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+              Generating with PurffleShorts V3 — building audio, visuals & motion graphics...
             </div>
           )}
           {task.status === 'completed' && (
             <div className="flex items-center gap-2 text-sm text-green-400">
               <CheckCircle2 className="w-4 h-4" />
-              Video generated successfully!
+              PurffleShorts V3 video generated successfully!
             </div>
           )}
           {task.status === 'failed' && (
@@ -255,7 +254,7 @@ export default function GenerateVideo() {
               <video
                 src={videoUrl}
                 controls
-                className="w-full rounded-lg border border-border"
+                className="w-full max-h-[600px] object-contain rounded-lg border border-border bg-black"
               />
               <div className="flex items-center gap-3">
                 <a
@@ -287,6 +286,11 @@ export default function GenerateVideo() {
         </Button>
 
         <div className="flex items-center gap-3">
+          {task?.status === 'completed' && (
+            <Button onClick={() => setTask(null)} variant="outline">
+              New Generation
+            </Button>
+          )}
           {task?.status === 'completed' && (
             <Button onClick={() => navigate('/library')} variant="outline">
               View Library

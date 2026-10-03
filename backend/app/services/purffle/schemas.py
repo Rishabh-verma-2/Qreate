@@ -9,6 +9,17 @@ class PurffleScene(BaseModel):
     search_query: str = Field(..., description="Stock footage search term (English)")
     image_prompt: str = Field(..., description="AI image generation prompt (English)")
     speaker: str = Field("A", description="Speaker ID ('A' or 'B')")
+    visual_type: Optional[str] = Field(None, description="Visual treatment type")
+    concept_key: Optional[str] = Field(None, description="Motion graphics concept key")
+    core_claim: Optional[str] = Field(None, description="Core claim/idea communicated by the narration")
+    visual_goal: Optional[str] = Field(None, description="What the viewer should see to understand the claim")
+    visual_subject: Optional[str] = Field(None, description="Primary visual subject or object")
+    visual_action: Optional[str] = Field(None, description="Physical motion, vector force, or state change")
+    composition: Optional[str] = Field(None, description="Composition archetype (A through L)")
+    animation_sequence: Optional[List[str]] = Field(default_factory=list, description="Sequence of visual motion actions")
+    supporting_text: Optional[str] = Field(None, description="Short semantic caption reinforcing visual")
+    transition_to_next: Optional[str] = Field(None, description="Continuity bridge to next scene")
+    background_family: Optional[str] = Field(None, description="Contextual environment/background family")
 
 
 class PurffleScript(BaseModel):

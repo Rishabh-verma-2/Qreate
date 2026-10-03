@@ -29,7 +29,7 @@ export interface Script {
   closing?: string;
   scenes: Scene[];
   language: string;
-  tone: string;
+  tone: string | string[];
   audience?: string;
   duration_seconds: number;
   original_prompt?: string;
@@ -85,7 +85,7 @@ export interface ScriptGenerateForm {
   title?: string;
   duration_seconds: number;
   language: string;
-  tone: string;
+  tone: string | string[];
   audience: string;
   additional_instructions?: string;
 }

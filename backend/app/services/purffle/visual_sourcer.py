@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 from PIL import Image, ImageDraw, ImageFilter
 
+from app.services.purffle.motion_graphics import detect_concept_key, render_motion_graphic_clip
+
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "QreateEducational/2.0 (video-generation; contact@qreate.local)"
@@ -139,12 +141,23 @@ async def _fetch_pollinations_image(client: httpx.AsyncClient, prompt: str, seed
     return None
 
 
+SCENE_TOKENS = [
+    "sceneone", "scenetwo", "scenethree", "scenefour", "scenefive",
+    "scenesix", "sceneseven", "sceneeight", "scenenine", "sceneten",
+    "sceneeleven", "scenetwelve", "scenethirteen", "scenefourteen", "scenefifteen",
+    "scenesixteen", "sceneseventeen", "sceneeighteen", "scenenineteen", "scenetwenty",
+]
+
+
 async def source_visuals_for_scenes(
     scenes: List[Dict[str, Any]],
     topic: str,
     output_media_dir: str,
 ) -> List[Tuple[str, str]]:
     """Download, format, and save 1080x1920 portrait visuals for each scene into output_media_dir.
+
+    Renders dynamic explanatory motion graphics for physics/process/movement scenes,
+    and sources high-res photography (NASA, Wikimedia, Pollinations) for hero and evidence scenes.
 
     Returns a list of (search_query_keyword, filepath) for each scene.
     """
@@ -161,21 +174,52 @@ async def source_visuals_for_scenes(
             desc = str(sc.get("visual_description") or "").strip()
             action = str(sc.get("visual_action") or "").strip()
             narration = str(sc.get("narration") or "").strip()
+            v_type = str(sc.get("visual_type") or "").strip()
+
+            # Assign unique phonetic token for deterministic 1:1 timeline matching
+            token = SCENE_TOKENS[idx - 1] if idx - 1 < len(SCENE_TOKENS) else f"scene{idx}"
 
             # Formulate 2-4 clean keywords
             candidate_text = f"{subject} {action}".strip() or desc or narration
             words = [re.sub(r"[^\w]", "", w).lower() for w in candidate_text.split() if len(w) > 3][:4]
             keyword_stem = "_".join(words) if words else f"scene_{idx}"
-            search_phrase = " ".join(words) if words else topic[:30]
+            search_phrase = f"{token} {' '.join(words) if words else topic[:25]}".strip()
 
-            filename = f"scene_{idx:02d}_{keyword_stem}.jpg"
-            dest_file = os.path.join(output_media_dir, filename)
+            # ── V3 MOTION GRAPHICS GENERATION ────────────────────────────
+            # Check if this scene calls for an explanatory motion graphic
+            concept_key = detect_concept_key(sc, topic)
+            if concept_key:
+                anim_filename = f"scene_{idx:02d}_{token}_{keyword_stem}.mp4"
+                anim_dest = os.path.join(output_media_dir, anim_filename)
+                duration = float(sc.get("duration_seconds") or 4.0)
 
+                try:
+                    ok = await asyncio.to_thread(
+                        render_motion_graphic_clip,
+                        concept_key=concept_key,
+                        output_mp4_path=anim_dest,
+                        duration_seconds=duration,
+                        title=topic,
+                        narration=narration,
+                        scene_metadata=sc,
+                    )
+                    if ok and os.path.isfile(anim_dest) and os.path.getsize(anim_dest) > 1000:
+                        logger.info(f"Scene {idx}: Rendered V3 animated diagram ({concept_key}) -> {anim_filename}")
+                        results.append((search_phrase, anim_dest))
+                        continue
+                    else:
+                        logger.warning(f"Scene {idx}: Animation failed for {concept_key}; falling back to sourced photo.")
+                except Exception as anim_err:
+                    logger.warning(f"Scene {idx}: Motion graphics exception: {anim_err}; falling back to sourced photo.")
+
+            # ── PHOTOGRAPHIC / DIAGRAM SOURCING (HERO & EVIDENCE) ────────
+            img_filename = f"scene_{idx:02d}_{token}_{keyword_stem}.jpg"
+            dest_file = os.path.join(output_media_dir, img_filename)
             downloaded = False
 
             # 1. Try NASA Images for space/astrophysics
             if is_space_or_physics:
-                nasa_queries = [search_phrase, subject, topic]
+                nasa_queries = [" ".join(words) if words else "", subject, topic]
                 for nq in nasa_queries:
                     if not nq:
                         continue
@@ -186,7 +230,7 @@ async def source_visuals_for_scenes(
                             if r.status_code == 200 and len(r.content) > 10000:
                                 if _crop_to_vertical_1080x1920(r.content, dest_file):
                                     downloaded = True
-                                    logger.info(f"Scene {idx}: Sourced NASA visual for '{search_phrase}' -> {filename}")
+                                    logger.info(f"Scene {idx}: Sourced NASA visual for '{search_phrase}' -> {img_filename}")
                                     break
                         except Exception:
                             continue
@@ -195,14 +239,14 @@ async def source_visuals_for_scenes(
 
             # 2. Try Wikimedia Commons for diagrams
             if not downloaded:
-                wiki_urls = await _search_wikimedia_commons(client, search_phrase or topic)
+                wiki_urls = await _search_wikimedia_commons(client, " ".join(words) if words else topic)
                 for wu in wiki_urls:
                     try:
                         r = await client.get(wu, timeout=8.0)
                         if r.status_code == 200 and len(r.content) > 10000:
                             if _crop_to_vertical_1080x1920(r.content, dest_file):
                                 downloaded = True
-                                logger.info(f"Scene {idx}: Sourced Wikimedia visual for '{search_phrase}' -> {filename}")
+                                logger.info(f"Scene {idx}: Sourced Wikimedia visual for '{search_phrase}' -> {img_filename}")
                                 break
                     except Exception:
                         continue
@@ -213,12 +257,12 @@ async def source_visuals_for_scenes(
                 ai_bytes = await _fetch_pollinations_image(client, ai_prompt, seed=idx * 231 + 17)
                 if ai_bytes and _crop_to_vertical_1080x1920(ai_bytes, dest_file):
                     downloaded = True
-                    logger.info(f"Scene {idx}: Sourced AI visual for '{search_phrase}' -> {filename}")
+                    logger.info(f"Scene {idx}: Sourced AI visual for '{search_phrase}' -> {img_filename}")
 
             # 4. Fallback procedural canvas
             if not downloaded or not os.path.isfile(dest_file):
                 _create_fallback_canvas(dest_file, title=topic, subtitle=subject or f"Scene {idx}")
-                logger.info(f"Scene {idx}: Created fallback canvas -> {filename}")
+                logger.info(f"Scene {idx}: Created fallback canvas -> {img_filename}")
 
             results.append((search_phrase, dest_file))
 

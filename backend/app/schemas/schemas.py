@@ -1,7 +1,7 @@
 """Pydantic schemas for request/response models."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    topic: str = Field(..., min_length=1, max_length=1000)
-    description: Optional[str] = Field(None, max_length=2000)
+    topic: str = Field(..., min_length=1, max_length=10000)
+    description: Optional[str] = Field(None, max_length=10000)
 
 
 class ProjectResponse(BaseModel):
@@ -39,17 +39,18 @@ class SceneSchema(BaseModel):
     emphasis_words: Optional[List[str]] = None
     pacing: Optional[str] = None
     shot_type: Optional[str] = None
+    concept_key: Optional[str] = None
 
 
 class ScriptGenerateRequest(BaseModel):
     project_id: str
-    topic: str = Field(..., min_length=1, max_length=1000)
+    topic: str = Field(..., min_length=1, max_length=10000)
     title: Optional[str] = Field(None, max_length=200)
     duration_seconds: int = Field(60, ge=10, le=600)
     language: str = Field("English", max_length=50)
-    tone: str = Field("professional", max_length=50)
+    tone: Union[str, List[str]] = Field("professional")
     audience: str = Field("general", max_length=100)
-    additional_instructions: Optional[str] = Field(None, max_length=1000)
+    additional_instructions: Optional[str] = Field(None, max_length=10000)
 
 
 class ScriptUpdate(BaseModel):
@@ -82,7 +83,7 @@ class VideoGenerateRequest(BaseModel):
     project_id: str
     script_id: str
     mode: str = Field("text", pattern="^(text|keyframe|reference)$")
-    duration_seconds: int = Field(5, ge=4, le=12)
+    duration_seconds: int = Field(5, ge=4, le=300)
     aspect_ratio: str = Field("16:9", pattern="^(21:9|16:9|4:3|1:1|3:4|9:16)$")
     seed: Optional[int] = None
     use_full_script: bool = True
