@@ -37,6 +37,7 @@ const DURATION_OPTIONS = [
 ];
 
 const ENGINE_OPTIONS = [
+  { value: 'purffle', label: '🎬 PurffleShorts V3 (9:16 Portrait — NASA & Motion Graphics)' },
   { value: 'free', label: '⚡ Free AI Multi-Scene Engine (Neural Voice + Visuals — 100% Free)' },
   { value: 'auto', label: '🔄 Auto (Try Agnes AI, fallback to Free Engine if rate-limited)' },
   { value: 'agnes', label: '🤖 Agnes Video Generator (Requires Token Plan on Agnes)' },
@@ -54,9 +55,9 @@ export default function GenerateVideo() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [task, setTask] = useState<VideoTask | null>(null);
-  const [aspectRatio, setAspectRatio] = useState('16:9');
+  const [aspectRatio, setAspectRatio] = useState('9:16');
   const [durationSeconds, setDurationSeconds] = useState('5');
-  const [engine, setEngine] = useState('free');
+  const [engine, setEngine] = useState('purffle');
   const [error, setError] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -174,7 +175,9 @@ export default function GenerateVideo() {
             />
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-            {engine === 'free' ? (
+            {engine === 'purffle' ? (
+              <span>🎬 <strong className="text-purple-400">PurffleShorts V3:</strong> High-impact 9:16 vertical shorts with authentic NASA/Wikimedia imagery, procedural motion graphics diagrams, and bold subtitles.</span>
+            ) : engine === 'free' ? (
               <span>⚡ <strong className="text-green-400">100% Free Engine:</strong> Generates multi-scene neural narration via Edge-TTS and scene visuals, exported directly to Cloudinary.</span>
             ) : engine === 'auto' ? (
               <span>🔄 <strong className="text-primary">Auto Engine:</strong> Tries Agnes AI GPU rendering; if Agnes rate limits or queue is full, seamlessly uses the Free Engine.</span>
@@ -220,26 +223,26 @@ export default function GenerateVideo() {
           {/* Status messages */}
           {task.status === 'pending' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="w-4 h-4 animate-pulse" />
-              Connecting to Agnes AI...
+              <Clock className="w-4 h-4 animate-pulse text-purple-400" />
+              Initializing video rendering pipeline...
             </div>
           )}
           {task.status === 'queued' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              In queue — Agnes is processing your request...
+              <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+              In queue — sourcing visuals and preparing motion graphics...
             </div>
           )}
           {task.status === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Generating video... This typically takes 2–3 minutes.
+              Synthesizing video — building neural audio, visual assets & synced captions...
             </div>
           )}
           {task.status === 'completed' && (
             <div className="flex items-center gap-2 text-sm text-green-400">
               <CheckCircle2 className="w-4 h-4" />
-              Video generated successfully!
+              Video generated and synced successfully!
             </div>
           )}
           {task.status === 'failed' && (
@@ -307,6 +310,11 @@ export default function GenerateVideo() {
         </Button>
 
         <div className="flex items-center gap-3">
+          {task?.status === 'completed' && (
+            <Button onClick={() => setTask(null)} variant="outline">
+              New Generation
+            </Button>
+          )}
           {task?.status === 'completed' && (
             <Button onClick={() => navigate('/library')} variant="outline">
               View Library

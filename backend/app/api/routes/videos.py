@@ -1,7 +1,7 @@
-"""Video generation, task polling, and retrieval routes."""
-
 import asyncio
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 
 from typing import Optional
@@ -14,9 +14,15 @@ from app.core.errors import AgnesAPIError, AgnesQueueFullError
 from app.database import crud
 from app.schemas.schemas import VideoGenerateRequest
 from app.services.agnes.client import get_agnes_client
-from app.services.cloudinary.uploader import upload_video_from_url
+from app.services.cloudinary.uploader import upload_video_file, upload_video_from_url
 from app.services.script.generator import script_to_video_prompt
-
+from app.services.purffle import (
+    PurffleRenderResult,
+    qreate_script_to_purffle,
+    run_purffle_render,
+    source_visuals_for_scenes,
+    validate_purffle_mp4,
+)
 from app.services.video_engine import generate_free_video, sync_audio_and_captions_to_video
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
@@ -142,6 +148,108 @@ async def _generate_via_free_engine(task_id: str, project_id: str, script_id: st
     return True
 
 
+async def _generate_via_purffle_engine(
+    task_id: str,
+    project_id: str,
+    script_id: str,
+    aspect_ratio: str,
+    update_fn,
+) -> bool:
+    """Render video using the PurffleShorts V3 visual storytelling pipeline."""
+    await update_fn(status="in_progress", progress=15)
+
+    script = await crud.get_script(script_id)
+    if not script:
+        raise ValueError(f"Script not found for video generation: {script_id}")
+
+    await update_fn(progress=25)
+
+    # Visual sourcing: download and format high-res 1080x1920 visuals / animated diagrams
+    scenes = script.get("scenes") or []
+    topic = str(script.get("original_prompt") or script.get("title") or "Science explainer")
+    media_dir = os.path.join(tempfile.gettempdir(), f"purffle_media_{task_id}")
+
+    search_queries = None
+    try:
+        sourced = await source_visuals_for_scenes(scenes, topic, media_dir)
+        search_queries = [kw for kw, _ in sourced]
+        logger.info(f"[Task {task_id}] Sourced {len(sourced)} scene visuals into {media_dir}")
+    except Exception as v_err:
+        logger.warning(f"[Task {task_id}] Visual sourcing notice: {v_err}. Continuing with fallback visuals.")
+
+    purffle_data = qreate_script_to_purffle(script, topic=topic, scene_search_queries=search_queries)
+
+    await update_fn(progress=50)
+
+    loop = asyncio.get_running_loop()
+
+    def _sync_progress_cb(pct: int, msg: str):
+        mapped = min(85, max(50, 50 + int(pct * 0.35)))
+        loop.call_soon_threadsafe(
+            lambda: asyncio.create_task(update_fn(progress=mapped))
+        )
+
+    aspect = "9:16"
+    if aspect_ratio in ("9:16", "16:9", "1:1", "4:5"):
+        aspect = aspect_ratio
+
+    result: Optional[PurffleRenderResult] = None
+    try:
+        result = await asyncio.to_thread(
+            run_purffle_render,
+            purffle_script_data=purffle_data,
+            aspect_ratio=aspect,
+            timeout_seconds=420,
+            progress_callback=_sync_progress_cb,
+            media_dir=media_dir,
+        )
+    except Exception as run_err:
+        logger.warning(f"[Task {task_id}] Purffle CLI runner: {run_err}. Falling back to native multi-scene engine.")
+
+    # If Purffle CLI was not installed or failed, fall back seamlessly to native multi-scene engine
+    if not result or not result.ok or not result.mp4_path:
+        logger.info(f"[Task {task_id}] Using native multi-scene synthesis engine with sourced visuals.")
+        return await _generate_via_free_engine(task_id, project_id, script_id, update_fn)
+
+    await update_fn(progress=90)
+    validation = validate_purffle_mp4(result.mp4_path, expected_aspect=aspect)
+
+    cloudinary_url = None
+    cloudinary_public_id = None
+    try:
+        cloudinary_url, cloudinary_public_id = await upload_video_file(
+            file_path=result.mp4_path,
+            project_id=project_id,
+            task_id=task_id,
+        )
+    except Exception as c_err:
+        logger.warning(f"[Task {task_id}] Cloudinary upload skipped ({c_err}). Retaining local video artifact.")
+
+    duration_sec = int(round(validation.duration_seconds or result.duration_seconds or 30))
+    video_url = cloudinary_url or f"file:///{result.mp4_path.replace(os.sep, '/')}"
+
+    gen_video = await crud.create_generated_video({
+        "project_id": project_id,
+        "script_id": script_id,
+        "task_id": task_id,
+        "cloudinary_url": cloudinary_url,
+        "cloudinary_public_id": cloudinary_public_id,
+        "original_url": video_url,
+        "file_format": "mp4",
+        "duration_seconds": duration_sec,
+    })
+
+    await update_fn(
+        status="completed",
+        progress=100,
+        completed_at=_utcnow(),
+        generated_video_id=gen_video["id"],
+        cloudinary_url=cloudinary_url,
+    )
+    logger.info(f"[Task {task_id}] Purffle video synthesis completed! Video: {cloudinary_url or video_url}")
+    return True
+
+
 async def _run_video_generation(
     task_id: str,
     project_id: str,
@@ -160,7 +268,17 @@ async def _run_video_generation(
     async def _update_task(**kwargs):
         await crud.update_video_task(task_id, kwargs)
 
-    # If requested free engine directly, run it immediately
+    # Route: PurffleShorts V3
+    if engine == "purffle":
+        try:
+            await _generate_via_purffle_engine(task_id, project_id, script_id, aspect_ratio, _update_task)
+            return
+        except Exception as e:
+            logger.exception(f"[Task {task_id}] Purffle engine error")
+            await _update_task(status="failed", error_message=str(e), completed_at=_utcnow())
+            return
+
+    # Route: Free Engine
     if engine == "free":
         try:
             await _generate_via_free_engine(task_id, project_id, script_id, _update_task)

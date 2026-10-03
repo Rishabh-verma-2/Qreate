@@ -19,6 +19,15 @@ export interface Scene {
   narration: string;
   visual_description: string;
   camera_notes?: string;
+  visual_type?: string;
+  visual_subject?: string;
+  visual_action?: string;
+  visual_motion?: string;
+  transition?: string;
+  emphasis_words?: string[];
+  pacing?: string;
+  shot_type?: string;
+  concept_key?: string;
 }
 
 export interface Script {
@@ -29,7 +38,7 @@ export interface Script {
   closing?: string;
   scenes: Scene[];
   language: string;
-  tone: string;
+  tone: string | string[];
   audience?: string;
   duration_seconds: number;
   original_prompt?: string;
@@ -85,7 +94,7 @@ export interface ScriptGenerateForm {
   title?: string;
   duration_seconds: number;
   language: string;
-  tone: string;
+  tone: string | string[];
   audience: string;
   additional_instructions?: string;
 }

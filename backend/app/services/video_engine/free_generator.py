@@ -81,8 +81,10 @@ FALLBACK_PHOTO_TOPICS = {
 }
 
 
-def _get_voice_for_tone(tone: str) -> str:
-    t = (tone or "professional").lower()
+def _get_voice_for_tone(tone: Any) -> str:
+    if isinstance(tone, (list, tuple)):
+        tone = tone[0] if tone else "professional"
+    t = str(tone or "professional").strip().lower()
     return DEFAULT_VOICES.get(t, "en-US-ChristopherNeural")
 
 

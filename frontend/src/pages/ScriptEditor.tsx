@@ -158,7 +158,7 @@ export default function ScriptEditor() {
           </div>
           <h1 className="text-2xl font-bold truncate">{script.title || 'Untitled Script'}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {script.scenes.length} scenes · ~{totalDuration}s · {script.language} · {script.tone}
+            {script.scenes.length} scenes · ~{totalDuration}s · {script.language} · {Array.isArray(script.tone) ? script.tone.join(', ') : script.tone}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

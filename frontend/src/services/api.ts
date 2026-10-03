@@ -35,12 +35,24 @@ api.interceptors.response.use(
       // Clear token if invalid or expired
       localStorage.removeItem('qreate_token');
     }
-    const message =
-      error.response?.data?.detail ||
-      error.response?.data?.error ||
-      error.message ||
-      'An unexpected error occurred';
-    console.error(`API Error: ${message}`, error.response?.data);
+
+    let message = 'An unexpected error occurred';
+    const data = error.response?.data;
+    if (typeof data?.error === 'string') {
+      message = data.error;
+    } else if (typeof data?.detail === 'string') {
+      message = data.detail;
+    } else if (Array.isArray(data?.detail)) {
+      message = data.detail
+        .map((d: any) => (typeof d === 'string' ? d : d?.msg || d?.message || 'Validation error'))
+        .join('; ');
+    } else if (data?.detail && typeof data.detail === 'object') {
+      message = data.detail.msg || data.detail.message || JSON.stringify(data.detail);
+    } else if (error.message) {
+      message = error.message;
+    }
+
+    console.error(`API Error: ${message}`, data);
     return Promise.reject(new Error(message));
   }
 );
@@ -62,7 +74,7 @@ export const scriptsApi = {
     title?: string;
     duration_seconds?: number;
     language?: string;
-    tone?: string;
+    tone?: string | string[];
     audience?: string;
     additional_instructions?: string;
   }) => api.post('/api/scripts/generate', data).then((r) => r.data.data),

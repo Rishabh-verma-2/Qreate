@@ -197,7 +197,7 @@ export default function ProjectDetail() {
               return (
                 <Card key={video.id} className="p-0 overflow-hidden">
                   {url ? (
-                    <video src={url} controls className="w-full aspect-video object-cover" />
+                    <video src={url} controls className="w-full max-h-96 object-contain bg-black" />
                   ) : (
                     <div className="aspect-video bg-muted flex items-center justify-center">
                       <Video className="w-8 h-8 text-muted-foreground opacity-30" />
