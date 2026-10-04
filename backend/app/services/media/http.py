@@ -55,10 +55,10 @@ async def get_json(url: str, *, params: dict = None, headers: dict = None) -> Op
     return None
 
 
-async def download(url: str, dest: str, min_bytes: int = 10_000, headers: dict = None) -> bool:
+async def download(url: str, dest: str, min_bytes: int = 10_000, headers: dict = None, timeout_seconds: float = 20.0) -> bool:
     """Stream `url` to `dest`. Rejects tiny (error pages) and oversized files."""
     try:
-        async with client().stream("GET", url, headers=headers, timeout=httpx.Timeout(60.0, connect=8.0)) as resp:
+        async with client().stream("GET", url, headers=headers, timeout=httpx.Timeout(timeout_seconds, connect=min(timeout_seconds, 6.0))) as resp:
             if resp.status_code != 200:
                 return False
             size = 0
@@ -70,7 +70,7 @@ async def download(url: str, dest: str, min_bytes: int = 10_000, headers: dict =
                         return False
                     f.write(chunk)
         return size >= min_bytes
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, asyncio.TimeoutError) as e:
         logger.info(f"Download failed {url[:80]}: {e}")
         return False
 

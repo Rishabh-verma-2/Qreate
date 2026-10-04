@@ -10,7 +10,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import edge_tts
 
@@ -117,14 +117,23 @@ def _estimate_words(text: str, duration: float) -> List[Word]:
     return out
 
 
-async def synthesize(text: str, audio_path: str, voice: str, rate: str = "+6%", pitch: str = "+0Hz") -> Narration:
+async def synthesize(
+    text: str,
+    audio_path: str,
+    voice: str,
+    rate: str = "+6%",
+    pitch: str = "+0Hz",
+    on_progress: Optional[Callable[[float], Awaitable[None]]] = None,
+) -> Narration:
     """Speak `text` into `audio_path` (mp3). Retries transient Edge-TTS failures."""
     text = re.sub(r"\s+", " ", text).strip() or "..."
+    approx_words = max(len(text.split()), 1)
     last_err = None
     for attempt in range(3):
         try:
             communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch, boundary="WordBoundary")
             words: List[Word] = []
+            last_reported = 0
             with open(audio_path, "wb") as f:
                 async for chunk in communicate.stream():
                     if chunk["type"] == "audio":
@@ -132,12 +141,23 @@ async def synthesize(text: str, audio_path: str, voice: str, rate: str = "+6%", 
                     elif chunk["type"] == "WordBoundary":
                         start = chunk["offset"] / 1e7
                         words.append(Word(start, start + chunk["duration"] / 1e7, chunk["text"]))
+                        if on_progress and (len(words) - last_reported >= 4 or len(words) == approx_words):
+                            last_reported = len(words)
+                            try:
+                                await on_progress(min(0.95, len(words) / approx_words))
+                            except Exception:
+                                pass
             duration = await probe_duration(audio_path)
             if duration <= 0:
                 raise RuntimeError("empty audio")
             if not words:
                 words = _estimate_words(text, duration)
             _locate_words(words, text)
+            if on_progress:
+                try:
+                    await on_progress(1.0)
+                except Exception:
+                    pass
             return Narration(audio_path, duration, words)
         except Exception as e:  # edge-tts raises a variety of transport errors
             last_err = e
@@ -146,8 +166,14 @@ async def synthesize(text: str, audio_path: str, voice: str, rate: str = "+6%", 
     raise RuntimeError(f"Voice synthesis failed: {last_err}")
 
 
-async def synthesize_script(lines: List[str], audio_path: str, voice: str, tone: str = "",
-                            rate: Optional[str] = None) -> Narration:
+async def synthesize_script(
+    lines: List[str],
+    audio_path: str,
+    voice: str,
+    tone: str = "",
+    rate: Optional[str] = None,
+    on_progress: Optional[Callable[[float], Awaitable[None]]] = None,
+) -> Narration:
     """Speak all script lines in one continuous take and return per-line start times."""
     clean = []
     for line in lines:
@@ -165,7 +191,7 @@ async def synthesize_script(lines: List[str], audio_path: str, voice: str, tone:
 
     tone_rate, pitch = delivery_for(tone)
     rate = rate or tone_rate  # creator-chosen pace wins over the tone default
-    narration = await synthesize(full_text, audio_path, voice, rate=rate, pitch=pitch)
+    narration = await synthesize(full_text, audio_path, voice, rate=rate, pitch=pitch, on_progress=on_progress)
     positions = _locate_words(narration.words, full_text)
 
     starts: List[float] = []

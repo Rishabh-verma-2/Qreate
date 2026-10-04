@@ -140,12 +140,20 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
     with tempfile.TemporaryDirectory(prefix=f"qreate_{job_id}_") as work:
         # ── 1. One-take voiceover + music + creator media (concurrently) ─────
         await report(20, "voiceover")
+
+        async def _voice_progress(ratio: float):
+            pct = int(20 + ratio * 12)  # 20% to 32%
+            await report(pct, "voiceover")
+
         music_task = (
-            fetch_music(mood, os.path.join(work, "music.mp3"))
+            fetch_music(mood, os.path.join(work, "music.mp3"), timeout_seconds=5.0)
             if s.ENABLE_MUSIC and mood != "none" else asyncio.sleep(0, result=None)
         )
         narration, music_path, own_assets = await asyncio.gather(
-            synthesize_script(lines, os.path.join(work, "voice.mp3"), voice, script.get("tone", ""), rate=voice_rate),
+            synthesize_script(
+                lines, os.path.join(work, "voice.mp3"), voice,
+                script.get("tone", ""), rate=voice_rate, on_progress=_voice_progress
+            ),
             music_task,
             fetch_user_media(user_media, os.path.join(work, "user")),
         )
@@ -162,6 +170,9 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
         durations = _scene_durations(narration.scene_starts, narration.duration)
         timings["voice"] = time.monotonic() - t0
 
+        await report(33, "syncing audio & beats")
+        beats = await detect_beats(music_path) if music_path else []
+
         # ── 2. Visuals: several matching shots per scene ────────────────────
         await report(35, "finding footage")
         shot_counts = [_shots_for_scene(d, shot_target) for d in durations]
@@ -174,21 +185,28 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
                 per_scene.append([own_assets[(k + j) % len(own_assets)] for j in range(n)])
                 k += n
         else:
+            total_scenes = len(lines)
+            completed_scenes = 0
+
+            async def _find_scene_with_progress(i: int):
+                nonlocal completed_scenes
+                res = await find_scene_media(
+                    _queries_for(scenes[i] if i < len(scenes) else {}),
+                    min_duration=durations[i] / shot_counts[i],
+                    dest_base=os.path.join(work, f"media_{i}"),
+                    ctx=ctx,
+                    description=_visual_brief(scenes[i] if i < len(scenes) else {}, script),
+                    max_assets=shot_counts[i],
+                )
+                completed_scenes += 1
+                pct = int(35 + (completed_scenes / max(total_scenes, 1)) * 14)
+                await report(pct, f"finding footage ({completed_scenes}/{total_scenes})")
+                return res
+
             per_scene = await _gather_limited(
-                [
-                    find_scene_media(
-                        _queries_for(scenes[i] if i < len(scenes) else {}),
-                        min_duration=durations[i] / shot_counts[i],
-                        dest_base=os.path.join(work, f"media_{i}"),
-                        ctx=ctx,
-                        description=_visual_brief(scenes[i] if i < len(scenes) else {}, script),
-                        max_assets=shot_counts[i],
-                    )
-                    for i in range(len(lines))
-                ],
+                [_find_scene_with_progress(i) for i in range(total_scenes)],
                 limit=3,
             )
-        beats = await detect_beats(music_path) if music_path else []
         timings["footage"] = time.monotonic() - t0
 
         # ── 3. Shot plan + renders ──────────────────────────────────────────
@@ -200,10 +218,24 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
                 assets_i, n = [_card(scenes, i, all_images[0] if all_images else None, work, theme)], 1
             for j, length in enumerate(_split(narration.scene_starts[i], durations[i], n, beats)):
                 plan.append((assets_i[j % len(assets_i)], length, j // len(assets_i)))
+
+        total_shots = len(plan)
+        completed_shots = 0
+
+        async def _render_shot_with_progress(k, asset, length, variant):
+            nonlocal completed_shots
+            res = await render_scene(
+                asset, length, os.path.join(work, f"shot_{k}.mp4"), k, work,
+                variant=variant, grade=theme.grade
+            )
+            completed_shots += 1
+            pct = int(50 + (completed_shots / max(total_shots, 1)) * 24)
+            await report(pct, f"editing shots ({completed_shots}/{total_shots})")
+            return res
+
         shot_paths = await render_scenes_parallel(
             [
-                render_scene(asset, length, os.path.join(work, f"shot_{k}.mp4"), k, work, variant=variant,
-                             grade=theme.grade)
+                _render_shot_with_progress(k, asset, length, variant)
                 for k, (asset, length, variant) in enumerate(plan)
             ],
             limit=s.SCENE_RENDER_PARALLELISM,

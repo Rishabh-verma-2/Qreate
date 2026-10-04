@@ -252,12 +252,12 @@ export default function GenerateVideo() {
           {(task.status === 'in_progress' || task.status === 'queued') && (
             <div className="mb-4">
               <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                <span>Processing...</span>
-                <span>{task.progress}%</span>
+                <span className="capitalize">{task.stage ? `Step: ${task.stage}` : 'Processing...'}</span>
+                <span className="font-medium text-foreground">{task.progress}%</span>
               </div>
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-primary rounded-full transition-all duration-500"
+                  className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
                   style={{ width: `${Math.max(task.progress, 5)}%` }}
                 />
               </div>
@@ -280,7 +280,11 @@ export default function GenerateVideo() {
           {task.status === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Synthesizing video — building neural audio, visual assets & synced captions...
+              <span>
+                {task.stage
+                  ? `Active: ${task.stage}...`
+                  : 'Synthesizing video — building neural audio, visual assets & synced captions...'}
+              </span>
             </div>
           )}
           {task.status === 'completed' && (
