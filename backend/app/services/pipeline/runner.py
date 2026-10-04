@@ -17,9 +17,9 @@ from app.core.config import get_settings
 from app.services.cloudinary.uploader import upload_video_file
 from app.services.media import captions as captions_mod
 from app.services.media.composer import (
-    TRANSITION, SceneRender, compose_final, make_text_card, render_scene, render_scenes_parallel,
+    SceneRender, compose_final, make_text_card, render_scene, render_scenes_parallel,
 )
-from app.services.media.music import fetch_music
+from app.services.media.music import detect_beats, fetch_music
 from app.services.media.stock import PLACES, MediaAsset, StockContext, fetch_user_media, find_scene_media
 from app.services.media.tts import pick_voice, synthesize_script
 
@@ -29,6 +29,9 @@ Reporter = Callable[[int, str], Awaitable[None]]
 
 FINAL_TAIL = 0.9      # let the last shot land after the last word
 MIN_SCENE = 1.2
+SHOT_TARGET = 2.1     # real reels cut roughly every 1.5–2.5 s
+MIN_SHOT = 1.0
+BEAT_SNAP = 0.18      # move an in-scene cut onto a music beat if one is this close
 
 
 def _narration_lines(script: Dict[str, Any]) -> List[str]:
@@ -81,22 +84,28 @@ async def _gather_limited(coros, limit: int):
     return await asyncio.gather(*(run(c) for c in coros))
 
 
-def _fill_with_cards(assets: List[Optional[MediaAsset]], scenes: List[Dict], work: str) -> List[MediaAsset]:
-    """Replace scenes without relevant footage by text cards over a neighbouring real photo."""
-    out: List[MediaAsset] = []
-    for i, a in enumerate(assets):
-        if a is not None:
-            out.append(a)
-            continue
-        neighbour = next(
-            (n.path for n in (assets[i - 1:i] + assets[i + 1:i + 2] + assets) if n is not None and n.kind == "image"),
-            None,
-        )
-        scene = scenes[i] if i < len(scenes) else {}
-        text = scene.get("on_screen_text") or ""
-        path = make_text_card(text, os.path.join(work, f"card_{i}.jpg"), background=neighbour, seed=i)
-        out.append(MediaAsset("image", path, "card", f"card_{i}"))
-    return out
+def _shots_for_scene(duration: float) -> int:
+    return max(1, min(3, round(duration / SHOT_TARGET))) if duration >= 2 * MIN_SHOT + 0.4 else 1
+
+
+def _split(start: float, duration: float, n: int, beats: List[float]) -> List[float]:
+    """Split a scene into n shot lengths, snapping inner cuts to nearby beats."""
+    cuts = [start + duration * k / n for k in range(1, n)]
+    snapped = []
+    for c in cuts:
+        near = min(beats, key=lambda b: abs(b - c)) if beats else None
+        snapped.append(near if near is not None and abs(near - c) <= BEAT_SNAP else c)
+    bounds = [start] + snapped + [start + duration]
+    lengths = [max(b - a, MIN_SHOT) for a, b in zip(bounds, bounds[1:])]
+    scale = duration / sum(lengths)  # keep the scene length exact
+    return [l * scale for l in lengths]
+
+
+def _card(scenes: List[Dict], i: int, neighbour: Optional[str], work: str) -> MediaAsset:
+    scene = scenes[i] if i < len(scenes) else {}
+    path = make_text_card(scene.get("on_screen_text") or "", os.path.join(work, f"card_{i}.jpg"),
+                          background=neighbour, seed=i)
+    return MediaAsset("image", path, "card", f"card_{i}")
 
 
 async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, report: Reporter) -> Dict[str, Any]:
@@ -126,44 +135,52 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
         durations = _scene_durations(narration.scene_starts, narration.duration)
         timings["voice"] = time.monotonic() - t0
 
-        # ── 2. Visuals ──────────────────────────────────────────────────────
+        # ── 2. Visuals: several matching shots per scene ────────────────────
         await report(35, "finding footage")
+        shot_counts = [_shots_for_scene(d) for d in durations]
         ctx = StockContext()
         if own_assets:
-            # Personal story: the creator's media, spread across every scene
-            assets: List[Optional[MediaAsset]] = [own_assets[i % len(own_assets)] for i in range(len(lines))]
+            # Personal story: walk through the creator's media in order, one per shot
+            per_scene, k = [], 0
+            for n in shot_counts:
+                per_scene.append([own_assets[(k + j) % len(own_assets)] for j in range(n)])
+                k += n
         else:
-            assets = await _gather_limited(
+            per_scene = await _gather_limited(
                 [
                     find_scene_media(
                         _queries_for(scenes[i] if i < len(scenes) else {}),
-                        min_duration=durations[i] + TRANSITION,
+                        min_duration=durations[i] / shot_counts[i],
                         dest_base=os.path.join(work, f"media_{i}"),
                         ctx=ctx,
                         description=_visual_brief(scenes[i] if i < len(scenes) else {}, script),
+                        max_assets=shot_counts[i],
                     )
                     for i in range(len(lines))
                 ],
                 limit=3,
             )
-        assets = _fill_with_cards(assets, scenes, work)
+        beats = await detect_beats(music_path) if music_path else []
         timings["footage"] = time.monotonic() - t0
 
-        # ── 3. Scene renders ────────────────────────────────────────────────
-        await report(50, "rendering scenes")
-        scene_paths = await render_scenes_parallel(
+        # ── 3. Shot plan + renders ──────────────────────────────────────────
+        await report(50, "editing shots")
+        plan = []  # (asset, duration, variant)
+        all_images = [a.path for sc in per_scene for a in sc if a.kind == "image"]
+        for i, (assets_i, n) in enumerate(zip(per_scene, shot_counts)):
+            if not assets_i:
+                assets_i, n = [_card(scenes, i, all_images[0] if all_images else None, work)], 1
+            for j, length in enumerate(_split(narration.scene_starts[i], durations[i], n, beats)):
+                plan.append((assets_i[j % len(assets_i)], length, j // len(assets_i)))
+        shot_paths = await render_scenes_parallel(
             [
-                render_scene(
-                    asset,
-                    durations[i] + (TRANSITION if i < len(lines) - 1 else 0.0),
-                    os.path.join(work, f"scene_{i}.mp4"),
-                    i, work,
-                )
-                for i, asset in enumerate(assets)
+                render_scene(asset, length, os.path.join(work, f"shot_{k}.mp4"), k, work, variant=variant)
+                for k, (asset, length, variant) in enumerate(plan)
             ],
             limit=s.SCENE_RENDER_PARALLELISM,
         )
         timings["scenes"] = time.monotonic() - t0
+        assets = [a for a, _, _ in plan]
 
         # ── 4. Captions ─────────────────────────────────────────────────────
         await report(75, "captions & audio")
@@ -180,8 +197,9 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
         await report(82, "final edit")
         final_path = os.path.join(work, "final.mp4")
         total = await compose_final(
-            [SceneRender(p, d) for p, d in zip(scene_paths, durations)],
+            [SceneRender(p, d) for p, (_, d, _) in zip(shot_paths, plan)],
             narration.audio_path, ass_path, final_path, music_path,
+            sfx_times=narration.scene_starts[1:],
         )
         timings["compose"] = time.monotonic() - t0
         size_mb = os.path.getsize(final_path) / 1e6
@@ -205,6 +223,7 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
         "width": s.VIDEO_WIDTH,
         "height": s.VIDEO_HEIGHT,
         "media_sources": [a.source for a in assets],
+        "shots": len(plan),
         "music": bool(music_path),
         "credits": ctx.credits,
         "voice": voice,

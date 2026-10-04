@@ -1,8 +1,9 @@
 """Background music from Openverse (CC0 loops, mostly Freesound) matched to the script mood."""
 
+import asyncio
 import logging
 import random
-from typing import Optional
+from typing import List, Optional
 
 from app.services.media.http import TTLCache, download, get_json
 
@@ -47,3 +48,43 @@ async def fetch_music(mood: str, dest: str) -> Optional[str]:
                 return dest
     logger.info(f"No music found for mood={mood}; continuing voice-only")
     return None
+
+
+async def detect_beats(path: str, max_seconds: float = 120.0) -> List[float]:
+    """Onset times (seconds) of the music, for cutting on the beat. [] on failure.
+
+    Spectral-flux onset detection on a 11 kHz mono decode — light enough for CPU.
+    """
+    from app.services.media.ffmpeg import ffmpeg_bin
+
+    proc = await asyncio.create_subprocess_exec(
+        ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-t", str(max_seconds), "-i", path,
+        "-ac", "1", "-ar", "11025", "-f", "f32le", "-",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+    )
+    raw, _ = await proc.communicate()
+    if not raw:
+        return []
+    return await asyncio.to_thread(_onsets, raw)
+
+
+def _onsets(raw: bytes) -> List[float]:
+    import numpy as np
+
+    sr, hop, win = 11025, 256, 1024
+    x = np.frombuffer(raw, dtype=np.float32)
+    if x.size < win * 4:
+        return []
+    frames = np.lib.stride_tricks.sliding_window_view(x, win)[::hop] * np.hanning(win)
+    mag = np.abs(np.fft.rfft(frames, axis=1))
+    flux = np.maximum(np.diff(np.log1p(mag), axis=0), 0).sum(axis=1)
+    flux = (flux - flux.mean()) / (flux.std() + 1e-9)
+    # Peaks above an adaptive threshold, at least ~0.25 s apart
+    min_gap = int(0.25 * sr / hop)
+    local = np.convolve(flux, np.ones(16) / 16, mode="same")
+    peaks, last = [], -min_gap
+    for i in range(1, len(flux) - 1):
+        if flux[i] > local[i] + 0.8 and flux[i] >= flux[i - 1] and flux[i] >= flux[i + 1] and i - last >= min_gap:
+            peaks.append((i + 1) * hop / sr)
+            last = i
+    return peaks

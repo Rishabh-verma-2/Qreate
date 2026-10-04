@@ -15,16 +15,14 @@ from app.services.media.stock import MediaAsset, create_gradient_background
 logger = logging.getLogger(__name__)
 
 FONTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "fonts")
-TRANSITION = 0.35  # seconds of crossfade between scenes
-TRANSITIONS = ["fade", "smoothleft", "fade", "smoothup", "fade", "slideleft"]
 # "Studio mic" chain: remove rumble, add chest warmth + presence, gentle compression.
 # Makes TTS sit in the mix like a recorded voiceover instead of a dry synthetic read.
 VOICE_CHAIN = (
     "highpass=f=75,equalizer=f=170:t=q:w=1.1:g=2,equalizer=f=3200:t=q:w=1.3:g=2.5,"
     "equalizer=f=7500:t=q:w=2:g=-1.5,acompressor=threshold=0.09:ratio=3:attack=6:release=120:makeup=1.8"
 )
-# Gentle "graded" look: a touch of contrast/saturation and a soft vignette.
-GRADE = "eq=contrast=1.05:saturation=1.08:brightness=0.01,vignette=angle=PI/6"
+# Gentle "graded" look: a touch of contrast and saturation (no vignette — phone footage has none).
+GRADE = "eq=contrast=1.04:saturation=1.07:brightness=0.01"
 
 
 @dataclass
@@ -157,87 +155,129 @@ def _ken_burns(index: int, frames: int, W: int, H: int, fps: int) -> str:
     return f"zoompan=z='{z}':x='{x}':y='{y}':d=1:s={W}x{H}:fps={fps}"
 
 
-async def render_scene(asset: MediaAsset, duration: float, out_path: str, index: int, work_dir: str) -> str:
-    """Render one silent 1080x1920 scene clip of exactly `duration` seconds."""
+PUNCH_FRAMES = 6      # quick zoom "snap" at the start of every shot (~0.2s)
+
+
+async def render_scene(asset: MediaAsset, duration: float, out_path: str, index: int, work_dir: str,
+                       variant: int = 0) -> str:
+    """Render one silent 1080x1920 shot of exactly `duration` seconds.
+
+    `variant` > 0 means the same source is reused for another shot: take a later part
+    of the clip and a tighter framing (a classic jump cut) or a different camera move.
+    """
     s = get_settings()
     W, H, fps = s.VIDEO_WIDTH, s.VIDEO_HEIGHT, s.VIDEO_FPS
     dur = f"{duration:.3f}"
+    frames = max(int(round(duration * fps)), 1)
 
     if asset.kind == "video":
         clip_len = asset.duration or await probe_duration(asset.path)
-        offset = 0.0
-        if clip_len > duration + 1.5:
-            offset = min(1.5, (clip_len - duration) / 3)  # skip shaky first frames
+        base = min(1.0, max(clip_len - duration, 0) / 3) if clip_len else 0.0  # skip shaky first frames
+        offset = base + variant * (duration + 0.4)
+        if clip_len and offset + duration > clip_len:
+            offset = max(clip_len - duration - 0.05, 0.0) if variant else base
         loop = ["-stream_loop", "-1"] if clip_len and clip_len < duration + offset + 0.2 else []
+        zoom = 1.0 + 0.12 * (variant % 2)  # alternate wide / punched-in framing
+        punch = (f"zoompan=z='if(lt(on,{PUNCH_FRAMES}),{zoom}+0.06*(1-on/{PUNCH_FRAMES}),{zoom})':"
+                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={W}x{H}:fps={fps}")
         vf = (
             f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},"
-            f"fps={fps},setsar=1,{GRADE},format=yuv420p"
+            f"fps={fps},{punch},setsar=1,{GRADE},format=yuv420p"
         )
-        args = [*loop, "-ss", f"{offset:.2f}", "-i", asset.path, "-t", dur, "-vf", vf, "-an", *_x264_args(18), out_path]
+        args = [*loop, "-ss", f"{offset:.2f}", "-i", asset.path, "-t", dur, "-vf", vf,
+                "-frames:v", str(frames), "-an", *_x264_args(18), out_path]
     else:
         still = _prepare_still(asset.path, os.path.join(work_dir, f"still_{index}.jpg"))
-        frames = int(round(duration * fps))
-        vf = f"{_ken_burns(index, frames, W, H, fps)},setsar=1,{GRADE},format=yuv420p"
+        vf = f"{_ken_burns(index + variant, frames, W, H, fps)},setsar=1,{GRADE},format=yuv420p"
         args = ["-loop", "1", "-framerate", str(fps), "-i", still, "-vf", vf, "-frames:v", str(frames), "-an", *_x264_args(18), out_path]
 
     try:
         await run_ffmpeg(args, timeout=240)
     except FFmpegError as e:
-        logger.warning(f"Scene {index + 1} render failed ({asset.source}): {e}; using fallback background")
+        logger.warning(f"Shot {index + 1} render failed ({asset.source}): {e}; using fallback background")
         fallback = create_gradient_background(os.path.join(work_dir, f"fallback_{index}.jpg"), seed=index)
-        frames = int(round(duration * fps))
         vf = f"{_ken_burns(index, frames, W, H, fps)},setsar=1,format=yuv420p"
         await run_ffmpeg(["-loop", "1", "-framerate", str(fps), "-i", fallback, "-vf", vf,
                           "-frames:v", str(frames), "-an", *_x264_args(20), out_path], timeout=240)
     return out_path
 
 
+SFX_DIR = os.path.join(os.path.dirname(FONTS_DIR), "sfx")
+SFX_VOLUME = 0.30
+
+
 async def compose_final(
-    scenes: List[SceneRender],
+    shots: List[SceneRender],
     voice_path: str,
     captions_path: str,
     out_path: str,
     music_path: Optional[str] = None,
+    sfx_times: Optional[List[float]] = None,
 ) -> float:
-    """Crossfade scenes, burn captions, duck music under voice, normalise loudness."""
+    """Hard-cut the shots together, burn captions, mix voice + ducked music + whooshes."""
     s = get_settings()
-    total = sum(sc.duration for sc in scenes)
+    total = sum(sc.duration for sc in shots)
     inputs: List[str] = []
-    for sc in scenes:
+    for sc in shots:
         inputs += ["-i", sc.path]
-    voice_idx = len(scenes)
+    voice_idx = len(shots)
     inputs += ["-i", voice_path]
+    next_idx = voice_idx + 1
     music_idx = None
     if music_path:
-        music_idx = voice_idx + 1
+        music_idx = next_idx
         inputs += ["-stream_loop", "-1", "-i", music_path]
+        next_idx += 1
+    sfx_files = sorted(f for f in os.listdir(SFX_DIR) if f.endswith(".mp3")) if os.path.isdir(SFX_DIR) else []
+    sfx_times = [t for t in (sfx_times or []) if 0.2 < t < total - 0.3] if sfx_files else []
+    sfx_idx = []
+    for f in sfx_files:
+        sfx_idx.append(next_idx)
+        inputs += ["-i", os.path.join(SFX_DIR, f)]
+        next_idx += 1
 
-    # Video: xfade chain. Each non-final clip is TRANSITION longer than its slot,
-    # so offsets equal the cumulative scene durations and audio stays in sync.
-    parts = []
-    prev, offset = "[0:v]", 0.0
-    for i in range(1, len(scenes)):
-        offset += scenes[i - 1].duration
-        label = f"[x{i}]"
-        parts.append(f"{prev}[{i}:v]xfade=transition={TRANSITIONS[(i - 1) % len(TRANSITIONS)]}:duration={TRANSITION}:offset={offset:.3f}{label}")
-        prev = label
+    # Video: hard cuts (how real reels are edited), captions, short fade-out at the very end
+    parts = ["".join(f"[{i}:v]" for i in range(len(shots))) + f"concat=n={len(shots)}:v=1:a=0[cat]"]
     parts.append(
-        f"{prev}ass='{_esc(captions_path)}':fontsdir='{_esc(FONTS_DIR)}',"
-        f"fade=t=out:st={max(total - 0.4, 0):.3f}:d=0.4,format=yuv420p[vout]"
+        f"[cat]ass='{_esc(captions_path)}':fontsdir='{_esc(FONTS_DIR)}',"
+        f"fade=t=out:st={max(total - 0.35, 0):.3f}:d=0.35,format=yuv420p[vout]"
     )
 
-    # Audio: voice (+ ducked music) → broadcast-style loudness for social feeds.
+    # Audio: processed voice, ducked music, whooshes slightly ahead of each scene change
+    mix = []
     voice_in = f"[{voice_idx}:a]aresample=48000,{VOICE_CHAIN},apad,atrim=0:{total:.3f},aformat=channel_layouts=stereo"
     if music_idx is not None:
         parts.append(f"{voice_in},asplit=2[voice][sc]")
         parts.append(
             f"[{music_idx}:a]aresample=48000,aformat=channel_layouts=stereo,volume={s.MUSIC_VOLUME},"
-            f"atrim=0:{total:.3f},afade=t=in:d=0.6,afade=t=out:st={max(total - 1.2, 0):.3f}:d=1.2[music]"
+            f"atrim=0:{total:.3f},afade=t=in:d=0.4,afade=t=out:st={max(total - 1.2, 0):.3f}:d=1.2[music]"
         )
         parts.append("[music][sc]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[ducked]")
-        parts.append("[voice][ducked]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[aout]")
+        mix += ["[voice]", "[ducked]"]
     else:
-        parts.append(f"{voice_in},loudnorm=I=-14:TP=-1.5:LRA=11[aout]")
+        parts.append(f"{voice_in}[voice]")
+        mix.append("[voice]")
+    if sfx_times:
+        per_file: dict = {}
+        for k, t in enumerate(sfx_times):
+            per_file.setdefault(k % len(sfx_idx), []).append(t)
+        labels = []
+        for fi, times in per_file.items():
+            src = sfx_idx[fi]
+            split = "".join(f"[s{fi}_{j}]" for j in range(len(times)))
+            parts.append(f"[{src}:a]aresample=48000,aformat=channel_layouts=stereo,volume={SFX_VOLUME},asplit={len(times)}{split}")
+            for j, t in enumerate(times):
+                ms = int(max(t - 0.18, 0) * 1000)
+                parts.append(f"[s{fi}_{j}]adelay={ms}|{ms}[d{fi}_{j}]")
+                labels.append(f"[d{fi}_{j}]")
+        # No apad/atrim here: amix→apad→atrim never terminates in FFmpeg. The final
+        # amix (duration=first, i.e. the voice) already fixes the length.
+        parts.append("".join(labels) + f"amix=inputs={len(labels)}:normalize=0[sfx]")
+        mix.append("[sfx]")
+    if len(mix) > 1:
+        parts.append("".join(mix) + f"amix=inputs={len(mix)}:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11[aout]")
+    else:
+        parts.append("[voice]loudnorm=I=-14:TP=-1.5:LRA=11[aout]")
 
     args = [
         *inputs,

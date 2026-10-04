@@ -342,7 +342,7 @@ async def _download_asset(cand: Dict, dest_base: str, ctx: StockContext) -> Opti
 
 
 async def _find_by_vision(queries: List[str], description: str, min_duration: float,
-                          dest_base: str, ctx: StockContext) -> Optional[MediaAsset]:
+                          dest_base: str, ctx: StockContext, max_assets: int = 1) -> List[MediaAsset]:
     """Pool candidates from every source, let CLIP pick the best-looking match."""
     import asyncio
     import os
@@ -359,7 +359,7 @@ async def _find_by_vision(queries: List[str], description: str, min_duration: fl
                 pool.setdefault(c["id"], c)
     cands = list(pool.values())[:30]
     if not cands:
-        return None
+        return []
 
     thumb_dir = f"{dest_base}_thumbs"
     os.makedirs(thumb_dir, exist_ok=True)
@@ -376,14 +376,19 @@ async def _find_by_vision(queries: List[str], description: str, min_duration: fl
         f"{c['source']}:{c['kind'][0]}={c['score']:.3f}" for c in cands[:3]))
 
     min_score = get_settings().RERANK_MIN_SCORE
-    for c in cands[:5]:
-        if c["score"] < min_score or c["id"] in ctx.used_ids:
+    best = cands[0]["score"] if cands else 0
+    picked: List[MediaAsset] = []
+    for c in cands[:8]:
+        if len(picked) >= max_assets:
+            break
+        # Extra shots must be nearly as good as the best one — never pad with weak clips
+        if c["score"] < max(min_score, best - 0.04) or c["id"] in ctx.used_ids:
             continue
         ctx.used_ids.add(c["id"])  # claim before awaiting: scenes search concurrently
-        asset = await _download_asset(c, dest_base, ctx)
+        asset = await _download_asset(c, f"{dest_base}_{len(picked)}", ctx)
         if asset:
-            return asset
-    return None
+            picked.append(asset)
+    return picked
 
 
 async def find_scene_media(
@@ -392,13 +397,14 @@ async def find_scene_media(
     dest_base: str,
     ctx: StockContext,
     description: str = "",
-) -> Optional[MediaAsset]:
-    """Find and download the most relevant real footage for a scene, or None."""
+    max_assets: int = 1,
+) -> List[MediaAsset]:
+    """Find and download up to `max_assets` relevant real shots for a scene ([] if none fit)."""
     from app.services.media import vision
 
     queries = [q for q in queries if q]
     if vision.available():
-        return await _find_by_vision(queries, description or queries[0], min_duration, dest_base, ctx)
+        return await _find_by_vision(queries, description or queries[0], min_duration, dest_base, ctx, max_assets)
 
     # Tag-based fallback: videos first, then photos, first acceptable hit wins
     for finders, is_video in ((_VIDEO_FINDERS, True), (_PHOTO_FINDERS, False)):
@@ -411,10 +417,10 @@ async def find_scene_media(
                     ctx.used_ids.add(cand["id"])
                     asset = await _download_asset(cand, dest_base, ctx)
                     if asset:
-                        return asset
+                        return [asset]
 
     logger.info(f"No relevant stock media for {queries}")
-    return None
+    return []
 
 
 async def fetch_user_media(items: List[Dict], dest_base: str) -> List[MediaAsset]:
