@@ -95,6 +95,19 @@ async def score_images(text: str, image_paths: List[Optional[str]]) -> List[floa
     return await asyncio.to_thread(_score_sync, text, image_paths)
 
 
+async def score_images_multi(texts: List[str], image_paths: List[Optional[str]]) -> List[float]:
+    """Best similarity of each image across several phrasings of the same shot.
+
+    Long scene descriptions dilute CLIP's 77-token text encoder; short concrete
+    search phrases ("man saving money jar") often match better, so take the max.
+    """
+    texts = [t for t in texts if t and t.strip()]
+    if not available() or not texts:
+        return [0.0] * len(image_paths)
+    per_text = [await asyncio.to_thread(_score_sync, t, image_paths) for t in texts]
+    return [max(col) for col in zip(*per_text)]
+
+
 async def warm_up() -> None:
     """Load the model in the background at startup so the first job isn't slow."""
     if get_settings().VISUAL_RERANK:

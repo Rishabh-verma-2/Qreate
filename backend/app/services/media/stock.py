@@ -365,7 +365,9 @@ async def _find_by_vision(queries: List[str], description: str, min_duration: fl
     os.makedirs(thumb_dir, exist_ok=True)
     paths = [os.path.join(thumb_dir, f"{i}.jpg") for i in range(len(cands))]
     ok = await asyncio.gather(*(download(c["thumb"], p, min_bytes=2_000) for c, p in zip(cands, paths)))
-    scores = await vision.score_images(description, [p if good else None for p, good in zip(paths, ok)])
+    scores = await vision.score_images_multi(
+        [description] + queries[:2], [p if good else None for p, good in zip(paths, ok)]
+    )
 
     for c, sc in zip(cands, scores):
         c["score"] = sc + (VIDEO_BONUS if c["kind"] == "video" else 0.0)
