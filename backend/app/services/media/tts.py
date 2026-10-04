@@ -10,7 +10,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import edge_tts
 
@@ -68,17 +68,23 @@ class Narration:
     scene_starts: List[float] = field(default_factory=list)  # seconds where each script line begins
 
 
-def pick_voice(language: str, tone: str, gender: str = "male") -> str:
+def _norm_tone(tone: Any) -> str:
+    if isinstance(tone, list):
+        tone = tone[0] if tone else ""
+    return str(tone or "").split(",")[0].strip().lower()
+
+
+def pick_voice(language: str, tone: Any, gender: str = "male") -> str:
     lang = (language or "english").strip().lower()
     gender = "female" if (gender or "").lower().startswith("f") else "male"
-    tone = (tone or "").split(",")[0].strip().lower()  # multi-tone: first tone sets the voice
-    if lang == "english" and gender == "male" and tone in ("energetic", "entertaining"):
+    t_clean = _norm_tone(tone)
+    if lang == "english" and gender == "male" and t_clean in ("energetic", "entertaining"):
         return ENERGETIC_MALE_EN
     return VOICES.get((lang, gender)) or VOICES.get((lang, "male")) or DEFAULT_VOICE
 
 
-def delivery_for(tone: str) -> Tuple[str, str]:
-    return TONE_DELIVERY.get((tone or "").split(",")[0].strip().lower(), ("+6%", "+0Hz"))
+def delivery_for(tone: Any) -> Tuple[str, str]:
+    return TONE_DELIVERY.get(_norm_tone(tone), ("+6%", "+0Hz"))
 
 
 def _locate_words(words: List[Word], text: str) -> List[int]:

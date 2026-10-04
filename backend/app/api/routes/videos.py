@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import StreamingResponse
 import httpx
 
+from app.core.config import get_settings
 from app.database import crud
 from app.schemas.schemas import VideoGenerateRequest
 from app.services.cloudinary.uploader import upload_video_file
