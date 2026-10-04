@@ -71,7 +71,11 @@ export default function GenerateVideo() {
 
   const [script, setScript] = useState<Script | null>(null);
   const [loading, setLoading] = useState(true);
-  const [engine, setEngine] = useState(vertical ? 'qreate' : 'purffle');
+  const [engine, setEngine] = useState(() => {
+    const pref = localStorage.getItem('qreate_pref_engine');
+    if (vertical) return pref || 'qreate';
+    return pref && pref !== 'qreate' ? pref : 'purffle'; // the reel engine is 9:16 only
+  });
   const [task, setTask] = useState<VideoTask | null>(null);
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
