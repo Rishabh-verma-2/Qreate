@@ -27,12 +27,8 @@ const ASPECT_RATIO_OPTIONS = [
   { value: '3:4', label: '3:4 (720×960)' },
 ];
 
-const ENGINE_OPTIONS = [
-  { value: 'purffle', label: '🎬 PurffleShorts V3 (9:16 Portrait — NASA & Motion Graphics)' },
-  { value: 'free', label: '⚡ Free AI Multi-Scene Engine (Neural Voice + Visuals — 100% Free)' },
-  { value: 'auto', label: '🔄 Auto (Try Agnes AI, fallback to Free Engine if rate-limited)' },
-  { value: 'agnes', label: '🤖 Agnes Video Generator (Requires Token Plan on Agnes)' },
-];
+// Engine is locked to Purffle V3 — the only professional animated video engine
+const PURFFLE_ENGINE = 'purffle';
 
 const POLL_INTERVAL = 4000; // ms
 
@@ -50,9 +46,8 @@ export default function GenerateVideo() {
     const stateAspect = (location.state as { aspectRatio?: string })?.aspectRatio;
     return stateAspect || localStorage.getItem('qreate_pref_aspect') || '9:16';
   });
-  const [engine, setEngine] = useState(() => {
-    return localStorage.getItem('qreate_pref_engine') || 'purffle';
-  });
+  // Engine is locked to Purffle V3 — professional animated video engine
+  const engine = PURFFLE_ENGINE;
   const [error, setError] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -213,25 +208,21 @@ export default function GenerateVideo() {
             </div>
           </div>
 
-          <div className="mt-4">
-            <Select
-              label="Generation Engine"
-              value={engine}
-              onChange={(e) => setEngine(e.target.value)}
-              options={ENGINE_OPTIONS}
-            />
+          {/* Engine locked to Purffle V3 */}
+          <div className="mt-4 space-y-1.5">
+            <label className="block text-sm font-medium text-foreground">Generation Engine</label>
+            <div className="h-11 px-4 rounded-xl border border-purple-500/40 bg-purple-500/5 flex items-center justify-between">
+              <span className="flex items-center gap-2 text-sm font-semibold text-purple-300">
+                🎬 PurffleShorts V3 — Professional Animated Video
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-wider">
+                Active
+              </span>
+            </div>
           </div>
 
-          <div className="mt-4 p-3.5 rounded-xl bg-muted/50 text-sm text-muted-foreground border border-border/60">
-            {engine === 'purffle' ? (
-              <span>🎬 <strong className="text-purple-400">PurffleShorts V3:</strong> High-impact 9:16 vertical shorts with authentic NASA/Wikimedia imagery, procedural motion graphics diagrams, and bold subtitles.</span>
-            ) : engine === 'free' ? (
-              <span>⚡ <strong className="text-green-400">100% Free Engine:</strong> Generates multi-scene neural narration via Edge-TTS and scene visuals, exported directly to Cloudinary.</span>
-            ) : engine === 'auto' ? (
-              <span>🔄 <strong className="text-primary">Auto Engine:</strong> Tries Agnes AI GPU rendering; if Agnes rate limits or queue is full, seamlessly uses the Free Engine.</span>
-            ) : (
-              <span>🤖 <strong className="text-foreground">Agnes AI:</strong> Direct Agnes cloud GPU rendering (requires paid token plan on Agnes platform).</span>
-            )}
+          <div className="mt-3 p-3.5 rounded-xl bg-purple-500/5 text-sm text-muted-foreground border border-purple-500/15">
+            <span>🎬 <strong className="text-purple-400">PurffleShorts V3:</strong> Creates high-impact professional animated videos with authentic NASA/Wikimedia imagery, procedural motion graphics, cinematic colour grading, and bold synchronised captions — rendered 100% locally.</span>
           </div>
         </Card>
       )}

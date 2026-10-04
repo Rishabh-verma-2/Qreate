@@ -1,8 +1,7 @@
-"""Subprocess runner for invoking PurffleShorts CLI safely."""
-
 import json
 import logging
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -13,10 +12,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
-
-# Default verified Purffle environment path
-DEFAULT_PURFFLE_PYTHON = r"C:\Users\NISHANT\.gemini\antigravity-ide\brain\ea9bd040-c11f-49f5-b1c5-cc4541a8e963\scratch\purffle-shorts\venv\Scripts\python.exe"
-DEFAULT_PURFFLE_CWD = r"C:\Users\NISHANT\.gemini\antigravity-ide\brain\ea9bd040-c11f-49f5-b1c5-cc4541a8e963\scratch\purffle-shorts"
 
 
 @dataclass
@@ -31,13 +26,65 @@ class PurffleRenderResult:
     error_message: Optional[str] = None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ENVIRONMENT DETECTION: Resolves Purffle Python + CWD cross-platform
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Override via env vars (highest priority)
+# PURFFLE_PYTHON_EXE  — absolute path to the Python executable with purffle_shorts installed
+# PURFFLE_CWD         — working directory for Purffle (must contain purffle_shorts/)
+
+
+def _find_purffle_python_on_system() -> Optional[str]:
+    """Try to find a Python executable that has purffle_shorts importable."""
+    # Candidates in priority order
+    candidates: list[str] = []
+
+    if platform.system() == "Windows":
+        # Common venv paths on Windows
+        candidates += [
+            r"C:\\purffle-shorts\\venv\\Scripts\\python.exe",
+        ]
+    else:
+        # Mac / Linux: search common locations
+        home = Path.home()
+        candidates += [
+            str(home / "purffle-shorts" / "venv" / "bin" / "python"),
+            str(home / "purffle-shorts" / "venv" / "bin" / "python3"),
+            "/usr/local/bin/python3",
+            "/opt/homebrew/bin/python3",
+        ]
+
+    for candidate in candidates:
+        p = Path(candidate)
+        if p.is_file():
+            # Quick check: can it import purffle_shorts?
+            try:
+                result = subprocess.run(
+                    [str(p), "-c", "import purffle_shorts"],
+                    capture_output=True, timeout=5
+                )
+                if result.returncode == 0:
+                    logger.info(f"[Purffle] Found purffle_shorts in: {candidate}")
+                    return str(p)
+            except Exception:
+                pass
+    return None
+
+
 def get_purffle_python_exe() -> str:
     """Resolve the Python executable to run PurffleShorts."""
     custom_path = os.environ.get("PURFFLE_PYTHON_EXE")
     if custom_path and os.path.isfile(custom_path):
         return custom_path
-    if os.path.isfile(DEFAULT_PURFFLE_PYTHON):
-        return DEFAULT_PURFFLE_PYTHON
+
+    detected = _find_purffle_python_on_system()
+    if detected:
+        return detected
+
+    # Final fallback: same Python running the backend — will fail if purffle_shorts not installed,
+    # but that's the expected error path (task will be marked failed with a clear message).
+    logger.warning("[Purffle] purffle_shorts not found in any known location. Set PURFFLE_PYTHON_EXE env var.")
     return sys.executable
 
 
@@ -46,9 +93,20 @@ def get_purffle_cwd() -> str:
     custom_cwd = os.environ.get("PURFFLE_CWD")
     if custom_cwd and os.path.isdir(custom_cwd):
         return custom_cwd
-    if os.path.isdir(DEFAULT_PURFFLE_CWD):
-        return DEFAULT_PURFFLE_CWD
+
+    # Auto-detect: look for purffle-shorts project directory
+    home = Path.home()
+    candidates = [
+        home / "purffle-shorts",
+        Path("/opt/purffle-shorts"),
+    ]
+    for c in candidates:
+        if c.is_dir():
+            logger.info(f"[Purffle] Using CWD: {c}")
+            return str(c)
+
     return os.getcwd()
+
 
 
 def run_purffle_render(

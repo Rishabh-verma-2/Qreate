@@ -606,10 +606,10 @@ export default function CreateVideo() {
           </div>
           <div className="space-y-1 flex-1">
             <p className="font-semibold text-foreground text-sm">
-              Integrated PurffleShorts V3 & Agnes AI Cloud
+              Agnes AI Script Engine · PurffleShorts V3 Video
             </p>
             <p>
-              Your topic is processed through high-level LLM scriptwriting. The engine automatically outputs exact scene timings, visual subject/motion instructions, and keyword highlights. You can review and refine every scene in the interactive editor before final video rendering.
+              Your topic is processed by Agnes AI to produce a professional multi-scene script with timed narration, camera directions, and visual goals. Video is then rendered by <strong className="text-purple-400">PurffleShorts V3</strong> — creating cinematic animated videos with motion graphics, NASA/Wikimedia imagery, colour grading, and bold captions. Review and refine every scene before rendering.
             </p>
           </div>
         </div>
