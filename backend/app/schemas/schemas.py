@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    topic: str = Field(..., min_length=1, max_length=10000)
+    topic: str = Field(..., min_length=1, max_length=500)
     description: Optional[str] = Field(None, max_length=10000)
 
 
@@ -92,17 +92,25 @@ def style_from(options) -> Dict[str, Any]:
 
 class ScriptGenerateRequest(ContentOptions):
     project_id: str
-    topic: str = Field(..., min_length=1, max_length=10000)
+    topic: str = Field(..., min_length=1, max_length=500)
 
 
 class PipelineRunRequest(ContentOptions):
     """One-shot: topic in, publish-ready video out (script written by the worker)."""
-    topic: str = Field(..., min_length=3, max_length=10000)
+    topic: str = Field(..., min_length=3, max_length=500)
 
 
 class BatchCreateRequest(BaseModel):
     name: Optional[str] = Field(None, max_length=200)
     topics: List[str] = Field(..., min_length=1)
+
+    @field_validator("topics")
+    @classmethod
+    def _topic_length(cls, v):
+        too_long = [t for t in v if len(t.strip()) > 500]
+        if too_long:
+            raise ValueError(f"Each topic must be 500 characters or fewer ({len(too_long)} too long)")
+        return v
     options: ContentOptions = ContentOptions()
 
 

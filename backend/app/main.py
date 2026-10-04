@@ -30,24 +30,20 @@ app = FastAPI(
 )
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
-cors_origins = [
-    *settings.cors_origins,
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-]
-if "*" in cors_origins:
-    cors_origins = ["*"]
+# Production: only the deployed frontend (FRONTEND_URL / EXTRA_CORS_ORIGINS / CORS_ORIGIN_REGEX).
+# Development: also any localhost port.
+cors_origins = list(settings.cors_origins)
+if not settings.ALLOW_LOCALHOST_CORS:
+    cors_origins = [o for o in cors_origins if "localhost" not in o and "127.0.0.1" not in o]
+origin_regex = "|".join(filter(None, [
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if settings.ALLOW_LOCALHOST_CORS else "",
+    settings.CORS_ORIGIN_REGEX,
+])) or None
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    # Local dev on any port + deployed previews (CORS_ORIGIN_REGEX, e.g. *.vercel.app)
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
-    + (f"|{settings.CORS_ORIGIN_REGEX}" if settings.CORS_ORIGIN_REGEX else ""),
+    allow_origin_regex=origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,8 +54,15 @@ app.add_exception_handler(QreateError, qreate_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────────
+DEFAULT_JWT_SECRET = "qreate-jwt-secret-key-super-secure-token-2026"
+
+
 @app.on_event("startup")
 async def startup():
+    secret = settings.JWT_SECRET_KEY or ""
+    if settings.ENVIRONMENT == "production" and (secret == DEFAULT_JWT_SECRET or len(secret) < 32):
+        # The default key is public in the repo — anyone could forge login tokens with it
+        raise RuntimeError("Set JWT_SECRET_KEY to a private random value (32+ chars) before running in production")
     await connect_db()
     if settings.EMBEDDED_WORKER and get_db() is not None:
         start_embedded_pool()

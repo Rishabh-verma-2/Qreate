@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Qreate API"
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
+    ENVIRONMENT: str = "development"   # "production" enables strict checks (JWT secret, CORS)
 
     # ── CORS ───────────────────────────────────────────────────────────────
     # Primary frontend URL plus optional comma-separated extras (e.g. Vercel previews)
@@ -18,6 +19,12 @@ class Settings(BaseSettings):
     EXTRA_CORS_ORIGINS: str = ""
     # Regex for preview deployments, e.g. https://qreate-.*\.vercel\.app
     CORS_ORIGIN_REGEX: str = r"https://.*\.vercel\.app"
+    ALLOW_LOCALHOST_CORS: bool = True     # set false in production
+
+    # ── Abuse limits ───────────────────────────────────────────────────────
+    RATE_LIMIT_VIDEOS_PER_HOUR: int = 10
+    RATE_LIMIT_SCRIPTS_PER_HOUR: int = 20
+    TOPIC_MAX_CHARS: int = 500
 
     # ── MongoDB ────────────────────────────────────────────────────────────
     MONGODB_URI: str = ""

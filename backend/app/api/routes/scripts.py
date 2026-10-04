@@ -3,7 +3,9 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+
+from app.core.ratelimit import enforce
 
 from app.database import crud
 from app.schemas.schemas import ScriptGenerateRequest, ScriptUpdate, style_from
@@ -15,13 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/generate", response_model=dict, status_code=201)
-async def generate_new_script(body: ScriptGenerateRequest):
+async def generate_new_script(body: ScriptGenerateRequest, request: Request):
     """Generate a hook-first short-form script with the LLM provider chain."""
     # Verify project exists
     project = await crud.get_project(body.project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {body.project_id}")
 
+    owner = await enforce(request, "script")
     research = await gather_research(body.topic, body.language)
     script_data = await generate_script(
         research=research,
@@ -40,6 +43,7 @@ async def generate_new_script(body: ScriptGenerateRequest):
 
     saved = await crud.create_script({
         "project_id": body.project_id,
+        "owner": owner,
         **script_fields_for_db(script_data),
         "language": body.language,
         "tone": body.tone,

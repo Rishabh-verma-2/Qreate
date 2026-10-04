@@ -2,7 +2,9 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+
+from app.core.ratelimit import enforce
 
 from app.core.config import get_settings
 from app.database import crud
@@ -20,7 +22,7 @@ def _require_db():
         raise HTTPException(status_code=503, detail="Database unavailable — the job queue needs MongoDB")
 
 
-async def _queue_topic(topic: str, options: ContentOptions, batch_id: str = None) -> dict:
+async def _queue_topic(topic: str, options: ContentOptions, batch_id: str = None, owner: str = None) -> dict:
     project = await crud.create_project({
         "name": (options.title or topic)[:200],
         "topic": topic,
@@ -29,6 +31,7 @@ async def _queue_topic(topic: str, options: ContentOptions, batch_id: str = None
         "batch_id": batch_id,
     })
     return await queue.enqueue({
+        "owner": owner,
         "project_id": project["id"],
         "batch_id": batch_id,
         "topic": topic,
@@ -38,17 +41,18 @@ async def _queue_topic(topic: str, options: ContentOptions, batch_id: str = None
 
 
 @router.post("/pipeline/run", response_model=dict, status_code=202)
-async def run_pipeline(body: PipelineRunRequest):
+async def run_pipeline(body: PipelineRunRequest, request: Request):
     """Topic → script → voice → footage → captions → video, fully automatic."""
     _require_db()
+    owner = await enforce(request, "video")
     await ensure_capacity()
     options = ContentOptions(**body.model_dump(exclude={"topic"}))
-    task = await _queue_topic(body.topic.strip(), options)
+    task = await _queue_topic(body.topic.strip(), options, owner=owner)
     return {"data": task, "message": "Pipeline started"}
 
 
 @router.post("/batches", response_model=dict, status_code=202)
-async def create_batch(body: BatchCreateRequest):
+async def create_batch(body: BatchCreateRequest, request: Request):
     """Queue one full pipeline run per topic. Topics render in parallel across workers."""
     _require_db()
     topics = [t.strip() for t in body.topics if t and t.strip()]
@@ -59,6 +63,7 @@ async def create_batch(body: BatchCreateRequest):
     max_batch = get_settings().MAX_BATCH_SIZE
     if len(topics) > max_batch:
         raise HTTPException(status_code=422, detail=f"A batch can have at most {max_batch} topics")
+    owner = await enforce(request, "video", cost=len(topics))
     await ensure_capacity(len(topics))
 
     batch = await crud.create_batch({
@@ -67,7 +72,7 @@ async def create_batch(body: BatchCreateRequest):
         "options": body.options.model_dump(),
         "task_ids": [],
     })
-    task_ids = [(await _queue_topic(t, body.options, batch["id"]))["id"] for t in topics]
+    task_ids = [(await _queue_topic(t, body.options, batch["id"], owner))["id"] for t in topics]
     await crud.update_batch(batch["id"], {"task_ids": task_ids})
     batch["task_ids"] = task_ids
     logger.info(f"Batch {batch['id']} queued with {len(topics)} topics")
