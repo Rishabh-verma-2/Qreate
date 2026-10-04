@@ -84,6 +84,8 @@ export const scriptsApi = {
     api.put(`/api/scripts/${id}`, data).then((r) => r.data.data),
   regenerate: (id: string) =>
     api.post(`/api/scripts/${id}/regenerate`).then((r) => r.data.data),
+  regenerateScene: (id: string, sceneIndex: number, instructions?: string) =>
+    api.post(`/api/scripts/${id}/scenes/${sceneIndex}/regenerate`, { instructions }).then((r) => r.data.data),
 };
 
 // ── Videos ────────────────────────────────────────────────────────────────────

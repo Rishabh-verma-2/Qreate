@@ -1,13 +1,14 @@
 """Script generation and management routes."""
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
 from app.database import crud
 from app.schemas.schemas import ScriptGenerateRequest, ScriptUpdate, style_from
 from app.services.research import gather_research
-from app.services.script.generator import generate_script, script_fields_for_db
+from app.services.script.generator import generate_script, regenerate_scene, script_fields_for_db
 
 router = APIRouter(prefix="/api/scripts", tags=["Scripts"])
 logger = logging.getLogger(__name__)
@@ -108,3 +109,18 @@ async def update_script(script_id: str, body: ScriptUpdate):
 
     updated = await crud.update_script(script_id, updates)
     return {"data": updated, "message": "Script updated"}
+
+
+@router.post("/{script_id}/scenes/{scene_index}/regenerate", response_model=dict)
+async def regenerate_one_scene(script_id: str, scene_index: int, body: Optional[dict] = None):
+    """Rewrite a single scene (0-based index) and save it; returns the updated script."""
+    existing = await crud.get_script(script_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Script not found: {script_id}")
+    scenes = list(existing.get("scenes") or [])
+    if not 0 <= scene_index < len(scenes):
+        raise HTTPException(status_code=422, detail="Scene index out of range")
+    new_scene = await regenerate_scene(existing, scene_index, (body or {}).get("instructions"))
+    scenes[scene_index] = {k: v for k, v in new_scene.items() if not k.startswith("_")}
+    updated = await crud.update_script(script_id, {"scenes": scenes})
+    return {"data": updated, "message": f"Scene {scene_index + 1} regenerated"}
