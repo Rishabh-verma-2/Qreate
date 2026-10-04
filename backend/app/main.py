@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.errors import QreateError, qreate_exception_handler, generic_exception_handler
 from app.database.connection import connect_db, close_db, get_db
-from app.api.routes import auth, health, pipeline, projects, scripts, uploads, videos
+from app.api.routes import auth, health, pipeline, projects, scripts, uploads, videos, voices
 from app.services.media import vision
 from app.services.media.http import close_client
 from app.worker.runner import start_embedded_pool, stop_embedded_pool
@@ -81,6 +81,7 @@ app.include_router(scripts.router)
 app.include_router(videos.router)
 app.include_router(pipeline.router)
 app.include_router(uploads.router)
+app.include_router(voices.router)
 
 
 @app.get("/")

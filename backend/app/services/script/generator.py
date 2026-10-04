@@ -109,7 +109,34 @@ Keep the language/script and format of the draft. Reply with the JSON object onl
 
 
 def _language_rule(language: str) -> str:
-    return LANGUAGE_RULES.get((language or "english").strip().lower(), f"Narration in natural spoken {language}.")
+    return LANGUAGE_RULES.get(
+        (language or "english").strip().lower(),
+        f"Narration in natural, everyday spoken {language}, written in {language}'s native script "
+        "(the way creators actually talk — not formal or textbook language).",
+    )
+
+
+# What each creator-selected format means for the writer (overrides the auto format pick)
+FORMAT_GUIDES = {
+    "ugc": (
+        "UGC (user-generated content): first person ('I', 'me', 'my'), sounds like a real person talking to their "
+        "front camera — honest experience, review, reaction or tip. Casual, a little imperfect ('okay so…', 'honestly'). "
+        "Visuals: real people filming themselves, talking to camera, POV hands, everyday rooms, streets, cafés."
+    ),
+    "storytelling": "STORY: a mini narrative with a setup, a turn and an emotional or surprising payoff. Visuals: people in moments.",
+    "explainer": "EXPLAINER: one clear question → simple explanation in 3 beats → 'so next time…' takeaway. Visuals show the thing being explained.",
+    "listicle": "LIST: exactly 3-5 numbered, specific items, best one last. Each item gets its own scene.",
+    "cinematic": (
+        "CINEMATIC: emotional, poetic, slower lines with pauses; awe and beauty. "
+        "Visuals: sweeping wide shots, golden hour, slow motion, silhouettes, faces in close-up."
+    ),
+    "news": (
+        "NEWS RECAP: what happened → why it matters → what's next. Neutral, fast, factual; name sources from the research. "
+        "Visuals: real places, people reacting, city life, screens."
+    ),
+    "motivational": "MOTIVATIONAL: second person ('you'), rising intensity, short punchy lines, a challenge at the end. Visuals: people training, working, winning.",
+    "pov": "POV / RELATABLE: open with 'POV:' describing a shared everyday moment, then the twist or insight. Visuals: first-person and people in everyday life.",
+}
 
 
 def _build_user_prompt(
@@ -121,6 +148,9 @@ def _build_user_prompt(
     audience: str,
     additional_instructions: Optional[str],
     has_user_media: bool = False,
+    video_format: str = "auto",
+    visual_style: str = "real",
+    people_focus: bool = True,
 ) -> str:
     scene_count = max(4, min(12, round(duration_seconds / 4)))
     lines = [
@@ -132,6 +162,13 @@ def _build_user_prompt(
         f"Audience: {audience}",
         "Visuals: the creator uploaded their OWN photos/videos for this topic — write it as their personal story; "
         "search_queries are only a backup." if has_user_media else "",
+        f"Format chosen by the creator (use it, don't pick another): {FORMAT_GUIDES[video_format]}"
+        if video_format in FORMAT_GUIDES else "",
+        "Visual style: ANIMATED — search_queries should find illustrations / animated clips (e.g. 'animated rocket launch', 'cartoon city')."
+        if visual_style == "animated" else "",
+        "People first: at least half of the scenes must show real people — faces, reactions, hands doing things. "
+        "Put a person in those search_queries (e.g. 'young woman laughing phone', 'man cooking kitchen')."
+        if people_focus and visual_style != "animated" else "",
         f"Extra instructions from the creator (follow them): {additional_instructions}" if additional_instructions else "",
     ]
     return "\n".join(l for l in lines if l)
@@ -240,11 +277,15 @@ async def generate_script(
     has_user_media: bool = False,
     polish: bool = True,
     research: Optional[Dict[str, Any]] = None,
+    video_format: str = "auto",
+    visual_style: str = "real",
+    people_focus: bool = True,
 ) -> Dict[str, Any]:
     """Write (and edit) a short-form, hook-first script. Returns the normalised script dict."""
     validate = _make_validator(topic, duration_seconds)
     brief = _build_user_prompt(
         topic, title, duration_seconds, language, tone, audience, additional_instructions, has_user_media,
+        video_format, visual_style, people_focus,
     )
     if research:
         brief += "\n\n" + research_brief(research)

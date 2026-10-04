@@ -12,6 +12,7 @@ from typing import List, Optional
 from app.core.config import get_settings
 from app.database import crud
 from app.services.pipeline import produce_video
+from app.schemas.schemas import style_from
 from app.services.research import gather_research, research_sources
 from app.services.script.generator import generate_script, script_fields_for_db
 from app.worker import queue
@@ -50,6 +51,9 @@ async def _ensure_script(job: dict, report) -> dict:
         additional_instructions=opts.get("additional_instructions"),
         has_user_media=bool(opts.get("user_media")),
         research=research,
+        video_format=opts.get("video_format", "auto"),
+        visual_style=opts.get("visual_style", "real"),
+        people_focus=opts.get("people_focus", True),
     )
     script = await crud.create_script({
         "project_id": job["project_id"],
@@ -62,6 +66,7 @@ async def _ensure_script(job: dict, report) -> dict:
         "additional_instructions": opts.get("additional_instructions"),
         "voice_gender": opts.get("voice_gender", "male"),
         "user_media": opts.get("user_media") or [],
+        "style": style_from(opts),
         "approved": True,
         "version": 1,
     })

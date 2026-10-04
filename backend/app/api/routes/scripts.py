@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.database import crud
-from app.schemas.schemas import ScriptGenerateRequest, ScriptUpdate
+from app.schemas.schemas import ScriptGenerateRequest, ScriptUpdate, style_from
 from app.services.research import gather_research
 from app.services.script.generator import generate_script, script_fields_for_db
 
@@ -32,6 +32,9 @@ async def generate_new_script(body: ScriptGenerateRequest):
         title=body.title,
         additional_instructions=body.additional_instructions,
         has_user_media=bool(body.user_media),
+        video_format=body.video_format,
+        visual_style=body.visual_style,
+        people_focus=body.people_focus,
     )
 
     saved = await crud.create_script({
@@ -45,6 +48,7 @@ async def generate_new_script(body: ScriptGenerateRequest):
         "additional_instructions": body.additional_instructions,
         "voice_gender": body.voice_gender,
         "user_media": [m.model_dump() for m in body.user_media],
+        "style": style_from(body),
         "approved": False,
         "version": 1,
     })

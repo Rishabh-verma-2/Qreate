@@ -55,6 +55,16 @@ class ContentOptions(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     voice_gender: str = Field("male", pattern="^(male|female)$")
     user_media: List[UserMedia] = Field(default_factory=list, max_length=30)
+    # ── Creator style choices ──
+    video_format: str = Field("auto", pattern="^(auto|ugc|storytelling|explainer|listicle|cinematic|news|motivational|pov)$")
+    visual_style: str = Field("real", pattern="^(real|animated|mixed)$")
+    color_theme: str = Field("vibrant", pattern="^(vibrant|warm|cool|neon|luxury|minimal|mono)$")
+    accent_color: Optional[str] = Field(None, pattern="^#?[0-9a-fA-F]{6}$")
+    caption_style: str = Field("bold", pattern="^(bold|clean|boxed)$")
+    voice_id: Optional[str] = Field(None, max_length=80)
+    pace: str = Field("fast", pattern="^(fast|normal|calm)$")
+    music_mood: str = Field("auto", pattern="^(auto|none|upbeat|chill|cinematic|inspiring|dramatic|lofi|corporate|emotional)$")
+    people_focus: bool = True
     duration_seconds: int = Field(30, ge=10, le=600)
     language: str = Field("English", max_length=50)
     # The studio UI can send several tones ("multi-tone storytelling"); stored as "a, b"
@@ -68,6 +78,16 @@ class ContentOptions(BaseModel):
         return v
     audience: str = Field("general", max_length=100)
     additional_instructions: Optional[str] = Field(None, max_length=10000)
+
+
+STYLE_FIELDS = ("video_format", "visual_style", "color_theme", "accent_color", "caption_style",
+                "voice_id", "pace", "music_mood", "people_focus", "voice_gender")
+
+
+def style_from(options) -> Dict[str, Any]:
+    """Creator style choices stored on the script and read by the render pipeline."""
+    data = options if isinstance(options, dict) else options.model_dump()
+    return {k: data.get(k) for k in STYLE_FIELDS if k in data}
 
 
 class ScriptGenerateRequest(ContentOptions):

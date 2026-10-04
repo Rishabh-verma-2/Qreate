@@ -128,6 +128,15 @@ export const uploadsApi = {
   },
 };
 
+// ── Voices (catalog + audio previews) ──────────────────────────────────────────
+export const voicesApi = {
+  list: () => api.get('/api/voices').then((r) => r.data.data),
+};
+
+export const VOICE_PREVIEW_URL = (voiceId: string, language?: string) =>
+  `${BASE_URL}/api/voices/preview?voice_id=${encodeURIComponent(voiceId)}` +
+  (language ? `&language=${encodeURIComponent(language)}` : '');
+
 // ── Health ─────────────────────────────────────────────────────────────────────
 export const healthApi = {
   check: () => api.get('/api/health').then((r) => r.data),

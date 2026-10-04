@@ -158,6 +158,15 @@ export interface ContentOptions {
   duration_seconds?: number;
   language?: string;
   tone?: string | string[];
+  video_format?: string;
+  visual_style?: string;
+  color_theme?: string;
+  accent_color?: string;
+  caption_style?: string;
+  voice_id?: string;
+  pace?: string;
+  music_mood?: string;
+  people_focus?: boolean;
   audience?: string;
   additional_instructions?: string;
 }

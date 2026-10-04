@@ -11,7 +11,12 @@ from typing import List, Optional
 from app.services.media.tts import Word
 
 FONT_NAME = "Poppins ExtraBold"
-HIGHLIGHT = "&H0000E5FF&"   # ASS colours are &HBBGGRR — this is #FFE500 yellow
+# Scripts Poppins doesn't cover get their own bundled Noto font (Poppins covers Latin + Devanagari)
+SCRIPT_FONTS = {
+    "Tamil": "Noto Sans Tamil", "Telugu": "Noto Sans Telugu", "Bengali": "Noto Sans Bengali",
+    "Gujarati": "Noto Sans Gujarati", "Kannada": "Noto Sans Kannada", "Malayalam": "Noto Sans Malayalam",
+    "Urdu": "Noto Sans Arabic", "Arabic": "Noto Sans Arabic",
+}
 CAPTION_Y = 1290            # lower-middle; clear of the app's bottom UI
 HOOK_Y = 300
 
@@ -43,6 +48,14 @@ def _chunk_words(words: List[Word], max_words: int = 3, max_chars: int = 18) -> 
     return chunks
 
 
+CAPTION_STYLES = {
+    # name: (font size, uppercase allowed, border style, outline, shadow, max words per chunk, pop-in)
+    "bold": (92, True, 1, 7, 4, 3, True),     # creator "pop" captions
+    "clean": (70, False, 1, 3, 2, 4, False),  # understated, sentence case (UGC / vlog look)
+    "boxed": (76, True, 3, 14, 0, 3, True),   # text on a solid box (news / explainer look)
+}
+
+
 def build_ass(
     words: List[Word],
     width: int,
@@ -50,7 +63,29 @@ def build_ass(
     hook_text: Optional[str] = None,
     hook_end: float = 3.0,
     uppercase: bool = True,
+    theme=None,
+    caption_style: str = "bold",
+    language: str = "English",
 ) -> str:
+    from app.services.media.themes import ass_color, get_theme
+
+    theme = theme or get_theme(None)
+    size, allow_upper, border, outline, shadow, max_words, pop_in = CAPTION_STYLES.get(caption_style, CAPTION_STYLES["bold"])
+    latin = uppercase  # caller passes uppercase=True only for Latin-script languages
+    uppercase = uppercase and allow_upper
+    bold_flag, spacing, font = 0, 1, FONT_NAME
+    if not latin:
+        # Letter spacing disables complex-script shaping in libass (Tamil/Hindi glyphs fall apart),
+        # so non-Latin captions use spacing 0, the script's own font, a bigger size and bold.
+        font = SCRIPT_FONTS.get(language, FONT_NAME)
+        size, bold_flag, spacing = int(size * 1.1), -1, 0
+        if border == 1:
+            outline = max(outline, 5)
+    text_c, hi_c = ass_color(theme.text), ass_color(theme.highlight)
+    back = "&H64000000" if border == 3 else "&H90000000"
+    # On a boxed style the box is drawn with the outline colour
+    outline_c = "&H59000000" if border == 3 else "&H00000000"
+
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -60,8 +95,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,{FONT_NAME},92,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,0,0,0,0,100,100,1,0,1,7,4,5,60,60,0,1
-Style: Hook,{FONT_NAME},78,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,26,0,5,80,80,0,1
+Style: Cap,{font},{size},{text_c},{text_c},{outline_c},{back},{bold_flag},0,0,0,100,100,{spacing},0,{border},{outline},{shadow},5,60,60,0,1
+Style: Hook,{font},78,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,3,26,0,5,80,80,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -70,12 +105,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     if hook_text:
         text = _clean(hook_text.upper() if uppercase else hook_text)
+        # Hook banner uses the theme accent as its box colour, text in black or white for contrast
+        r, g, b = theme.highlight
+        dark_text = (0.299 * r + 0.587 * g + 0.114 * b) > 160
         lines.append(
             f"Dialogue: 1,{_ts(0.15)},{_ts(hook_end)},Hook,,0,0,0,,"
-            f"{{\\pos({width // 2},{HOOK_Y})\\fad(150,250)\\3c&H000000&\\4a&HFF&\\1c&HFFFFFF&\\3a&H40&}}{text}"
+            f"{{\\pos({width // 2},{HOOK_Y})\\fad(150,250)\\3c{hi_c}\\1c{'&H000000&' if dark_text else '&HFFFFFF&'}}}{text}"
         )
 
-    chunks = _chunk_words(words)
+    chunks = _chunk_words(words, max_words=max_words, max_chars=18 if max_words <= 3 else 24)
     for ci, chunk in enumerate(chunks):
         next_start = chunks[ci + 1][0].start if ci + 1 < len(chunks) else chunk[-1].end + 0.4
         chunk_end = next_start if next_start - chunk[-1].end < 0.5 else chunk[-1].end + 0.25
@@ -88,10 +126,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             parts = []
             for ti, tok in enumerate(tokens):
                 if ti == wi:
-                    parts.append(f"{{\\c{HIGHLIGHT}}}{tok}{{\\c&H00FFFFFF&}}")
+                    parts.append(f"{{\\c{hi_c}}}{tok}{{\\c{text_c}}}")
                 else:
                     parts.append(tok)
-            pop = "\\fscx88\\fscy88\\t(0,80,\\fscx100\\fscy100)" if wi == 0 else ""
+            pop = "\\fscx88\\fscy88\\t(0,80,\\fscx100\\fscy100)" if (wi == 0 and pop_in) else ""
             lines.append(
                 f"Dialogue: 0,{_ts(start)},{_ts(end)},Cap,,0,0,0,,"
                 f"{{\\pos({width // 2},{CAPTION_Y}){pop}}}{' '.join(parts)}"

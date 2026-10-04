@@ -21,6 +21,8 @@ from app.services.media.composer import (
 )
 from app.services.media.music import detect_beats, fetch_music
 from app.services.media.stock import PLACES, MediaAsset, StockContext, fetch_user_media, find_scene_media
+from app.services.media import voices as voice_catalog
+from app.services.media.themes import get_theme
 from app.services.media.tts import pick_voice, synthesize_script
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,11 @@ Reporter = Callable[[int, str], Awaitable[None]]
 FINAL_TAIL = 0.9      # let the last shot land after the last word
 MIN_SCENE = 1.2
 SHOT_TARGET = 2.1     # real reels cut roughly every 1.5–2.5 s
+PACE = {  # pace → (seconds per shot, voice rate)
+    "fast": (1.7, "+10%"),
+    "normal": (2.3, "+4%"),
+    "calm": (3.0, "-3%"),
+}
 MIN_SHOT = 1.0
 BEAT_SNAP = 0.18      # move an in-scene cut onto a music beat if one is this close
 
@@ -84,8 +91,8 @@ async def _gather_limited(coros, limit: int):
     return await asyncio.gather(*(run(c) for c in coros))
 
 
-def _shots_for_scene(duration: float) -> int:
-    return max(1, min(3, round(duration / SHOT_TARGET))) if duration >= 2 * MIN_SHOT + 0.4 else 1
+def _shots_for_scene(duration: float, target: float = SHOT_TARGET) -> int:
+    return max(1, min(4, round(duration / target))) if duration >= 2 * MIN_SHOT + 0.4 else 1
 
 
 def _split(start: float, duration: float, n: int, beats: List[float]) -> List[float]:
@@ -101,10 +108,10 @@ def _split(start: float, duration: float, n: int, beats: List[float]) -> List[fl
     return [l * scale for l in lengths]
 
 
-def _card(scenes: List[Dict], i: int, neighbour: Optional[str], work: str) -> MediaAsset:
+def _card(scenes: List[Dict], i: int, neighbour: Optional[str], work: str, theme=None) -> MediaAsset:
     scene = scenes[i] if i < len(scenes) else {}
     path = make_text_card(scene.get("on_screen_text") or "", os.path.join(work, f"card_{i}.jpg"),
-                          background=neighbour, seed=i)
+                          background=neighbour, seed=i, theme=theme)
     return MediaAsset("image", path, "card", f"card_{i}")
 
 
@@ -116,29 +123,50 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
     scenes = script.get("scenes") or [{}]
     lines = _narration_lines(script)
     language = script.get("language", "English")
-    voice = pick_voice(language, script.get("tone", ""), script.get("voice_gender", "male"))
-    latin = language.lower() not in ("hindi", "japanese", "chinese")
+    style = script.get("style") or {}
+    gender = style.get("voice_gender") or script.get("voice_gender", "male")
+    if voice_catalog.is_valid_voice(style.get("voice_id")):
+        voice = style["voice_id"]
+    else:
+        voice = (voice_catalog.default_voice(language, gender) if language not in ("English", "Hinglish", "Hindi")
+                 else None) or pick_voice(language, script.get("tone", ""), gender)
+    latin = language in voice_catalog.LATIN_LANGUAGES
+    theme = get_theme(style.get("color_theme"), style.get("accent_color"))
+    shot_target, voice_rate = PACE.get(style.get("pace") or "fast", PACE["fast"])
+    mood = style.get("music_mood") or "auto"
+    mood = script.get("music_mood", "cinematic") if mood == "auto" else mood
     user_media = script.get("user_media") or []
 
     with tempfile.TemporaryDirectory(prefix=f"qreate_{job_id}_") as work:
         # ── 1. One-take voiceover + music + creator media (concurrently) ─────
         await report(20, "voiceover")
         music_task = (
-            fetch_music(script.get("music_mood", "cinematic"), os.path.join(work, "music.mp3"))
-            if s.ENABLE_MUSIC else asyncio.sleep(0, result=None)
+            fetch_music(mood, os.path.join(work, "music.mp3"))
+            if s.ENABLE_MUSIC and mood != "none" else asyncio.sleep(0, result=None)
         )
         narration, music_path, own_assets = await asyncio.gather(
-            synthesize_script(lines, os.path.join(work, "voice.mp3"), voice, script.get("tone", "")),
+            synthesize_script(lines, os.path.join(work, "voice.mp3"), voice, script.get("tone", ""), rate=voice_rate),
             music_task,
             fetch_user_media(user_media, os.path.join(work, "user")),
         )
+        # Keep the reel near its target length: long-word languages (Tamil, Malayalam…)
+        # overshoot word budgets, so re-voice faster (max +25%) instead of running long.
+        target = float(script.get("duration_seconds") or 30)
+        if narration.duration > target * 1.3:
+            current = int(voice_rate.rstrip("%"))
+            faster = min(25, current + int((narration.duration / (target * 1.15) - 1) * 100))
+            if faster > current:
+                logger.info(f"[{job_id}] voiceover {narration.duration:.1f}s vs target {target:.0f}s → re-voicing at +{faster}%")
+                narration = await synthesize_script(lines, os.path.join(work, "voice_fast.mp3"), voice,
+                                                    script.get("tone", ""), rate=f"+{faster}%")
         durations = _scene_durations(narration.scene_starts, narration.duration)
         timings["voice"] = time.monotonic() - t0
 
         # ── 2. Visuals: several matching shots per scene ────────────────────
         await report(35, "finding footage")
-        shot_counts = [_shots_for_scene(d) for d in durations]
-        ctx = StockContext()
+        shot_counts = [_shots_for_scene(d, shot_target) for d in durations]
+        ctx = StockContext(visual_style=style.get("visual_style") or "real",
+                           people_focus=style.get("people_focus", True) is not False)
         if own_assets:
             # Personal story: walk through the creator's media in order, one per shot
             per_scene, k = [], 0
@@ -169,12 +197,13 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
         all_images = [a.path for sc in per_scene for a in sc if a.kind == "image"]
         for i, (assets_i, n) in enumerate(zip(per_scene, shot_counts)):
             if not assets_i:
-                assets_i, n = [_card(scenes, i, all_images[0] if all_images else None, work)], 1
+                assets_i, n = [_card(scenes, i, all_images[0] if all_images else None, work, theme)], 1
             for j, length in enumerate(_split(narration.scene_starts[i], durations[i], n, beats)):
                 plan.append((assets_i[j % len(assets_i)], length, j // len(assets_i)))
         shot_paths = await render_scenes_parallel(
             [
-                render_scene(asset, length, os.path.join(work, f"shot_{k}.mp4"), k, work, variant=variant)
+                render_scene(asset, length, os.path.join(work, f"shot_{k}.mp4"), k, work, variant=variant,
+                             grade=theme.grade)
                 for k, (asset, length, variant) in enumerate(plan)
             ],
             limit=s.SCENE_RENDER_PARALLELISM,
@@ -191,6 +220,9 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
                 hook_text=script.get("hook_text") or None,
                 hook_end=min(durations[0], 3.2),
                 uppercase=latin,
+                theme=theme,
+                caption_style=style.get("caption_style") or "bold",
+                language=language,
             ))
 
         # ── 5. Final edit ───────────────────────────────────────────────────
@@ -227,5 +259,6 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
         "music": bool(music_path),
         "credits": ctx.credits,
         "voice": voice,
+        "style": style,
         "timings": {k: round(v, 1) for k, v in timings.items()},
     }

@@ -84,7 +84,7 @@ def _is_latin(text: str) -> bool:
     return all(ord(c) < 0x250 for c in text)
 
 
-def make_text_card(text: str, dest: str, background: Optional[str] = None, seed: int = 0) -> str:
+def make_text_card(text: str, dest: str, background: Optional[str] = None, seed: int = 0, theme=None) -> str:
     """Bold kinetic-typography card (the "fact card" style creators use between shots).
 
     Background is a heavily blurred, darkened version of a neighbouring real shot when
@@ -104,7 +104,8 @@ def make_text_card(text: str, dest: str, background: Optional[str] = None, seed:
             bg = im.crop((left, top, left + W, top + H)).filter(ImageFilter.GaussianBlur(45))
             bg = ImageEnhance.Brightness(bg).enhance(0.45)
     else:
-        bg = Image.open(create_gradient_background(dest, seed=seed)).convert("RGB")
+        palette = (theme.card_top, theme.card_bottom) if theme else None
+        bg = Image.open(create_gradient_background(dest, seed=seed, palette=palette)).convert("RGB")
 
     text = (text or "").strip().upper()
     if text and _is_latin(text):
@@ -130,7 +131,7 @@ def make_text_card(text: str, dest: str, background: Optional[str] = None, seed:
         line_h = int(size * 1.15)
         y = int(H * 0.40) - (line_h * len(lines)) // 2
         # Accent bar above the text
-        draw.rounded_rectangle([(W // 2 - 60, y - 50), (W // 2 + 60, y - 38)], radius=6, fill=(255, 229, 0))
+        draw.rounded_rectangle([(W // 2 - 60, y - 50), (W // 2 + 60, y - 38)], radius=6, fill=theme.highlight if theme else (255, 229, 0))
         for line in lines:
             tw = draw.textlength(line, font=font)
             draw.text(((W - tw) / 2, y), line, font=font, fill=(255, 255, 255),
@@ -159,7 +160,7 @@ PUNCH_FRAMES = 6      # quick zoom "snap" at the start of every shot (~0.2s)
 
 
 async def render_scene(asset: MediaAsset, duration: float, out_path: str, index: int, work_dir: str,
-                       variant: int = 0) -> str:
+                       variant: int = 0, grade: str = GRADE) -> str:
     """Render one silent 1080x1920 shot of exactly `duration` seconds.
 
     `variant` > 0 means the same source is reused for another shot: take a later part
@@ -182,13 +183,13 @@ async def render_scene(asset: MediaAsset, duration: float, out_path: str, index:
                  f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={W}x{H}:fps={fps}")
         vf = (
             f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{H},"
-            f"fps={fps},{punch},setsar=1,{GRADE},format=yuv420p"
+            f"fps={fps},{punch},setsar=1,{grade},format=yuv420p"
         )
         args = [*loop, "-ss", f"{offset:.2f}", "-i", asset.path, "-t", dur, "-vf", vf,
                 "-frames:v", str(frames), "-an", *_x264_args(18), out_path]
     else:
         still = _prepare_still(asset.path, os.path.join(work_dir, f"still_{index}.jpg"))
-        vf = f"{_ken_burns(index + variant, frames, W, H, fps)},setsar=1,{GRADE},format=yuv420p"
+        vf = f"{_ken_burns(index + variant, frames, W, H, fps)},setsar=1,{grade},format=yuv420p"
         args = ["-loop", "1", "-framerate", str(fps), "-i", still, "-vf", vf, "-frames:v", str(frames), "-an", *_x264_args(18), out_path]
 
     try:

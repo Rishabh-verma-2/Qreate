@@ -10,7 +10,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import edge_tts
 
@@ -140,7 +140,8 @@ async def synthesize(text: str, audio_path: str, voice: str, rate: str = "+6%", 
     raise RuntimeError(f"Voice synthesis failed: {last_err}")
 
 
-async def synthesize_script(lines: List[str], audio_path: str, voice: str, tone: str = "") -> Narration:
+async def synthesize_script(lines: List[str], audio_path: str, voice: str, tone: str = "",
+                            rate: Optional[str] = None) -> Narration:
     """Speak all script lines in one continuous take and return per-line start times."""
     clean = []
     for line in lines:
@@ -156,7 +157,8 @@ async def synthesize_script(lines: List[str], audio_path: str, voice: str, tone:
         cursor += len(line) + 1
     full_text = " ".join(clean)
 
-    rate, pitch = delivery_for(tone)
+    tone_rate, pitch = delivery_for(tone)
+    rate = rate or tone_rate  # creator-chosen pace wins over the tone default
     narration = await synthesize(full_text, audio_path, voice, rate=rate, pitch=pitch)
     positions = _locate_words(narration.words, full_text)
 

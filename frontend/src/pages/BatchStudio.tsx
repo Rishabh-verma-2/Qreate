@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertCircle, ChevronRight, Layers, Loader2, Sparkles, XCircle } from 'lucide-react';
 import { batchesApi } from '../services/api';
@@ -10,7 +10,10 @@ import { StatusBadge } from '../components/ui/Badge';
 import { CopyPostButton, InspirationPanel, VerticalPlayer } from '../components/VideoCard';
 import { downloadUrl } from '../lib/video';
 import { formatDate } from '../lib/utils';
-import { DURATION_OPTIONS, LANGUAGE_OPTIONS, TONE_OPTIONS, VOICE_OPTIONS } from '../lib/options';
+import { DURATION_OPTIONS, TONE_OPTIONS } from '../lib/options';
+import { loadStyle, saveStyle, type StyleChoices } from '../lib/styleOptions';
+import StylePanel from '../components/StylePanel';
+import VoicePicker from '../components/VoicePicker';
 import MediaUploader from '../components/MediaUploader';
 
 
@@ -30,16 +33,27 @@ const STAGE_LABELS: Record<string, string> = {
   done: 'Done',
 };
 
+function StepTitle({ n, title }: { n: number; title: string }) {
+  return (
+    <div className="flex items-center gap-2.5 mb-4">
+      <span className="w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center">{n}</span>
+      <h2 className="text-base font-semibold">{title}</h2>
+    </div>
+  );
+}
+
 export default function BatchStudio() {
   const navigate = useNavigate();
   const [topics, setTopics] = useState('');
   const [name, setName] = useState('');
   const [duration, setDuration] = useState('30');
-  const [language, setLanguage] = useState('English');
+  const [language, setLanguage] = useState(() => {
+    try { return localStorage.getItem('qreate_language') || 'English'; } catch { return 'English'; }
+  });
+  const [style, setStyle] = useState<StyleChoices>(loadStyle);
   const [tone, setTone] = useState('energetic');
   const [audience, setAudience] = useState('Gen Z & young professionals in India');
   const [mode, setMode] = useState<'single' | 'batch'>('single');
-  const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
   const [instructions, setInstructions] = useState('');
   const [media, setMedia] = useState<UserMedia[]>([]);
   const [error, setError] = useState('');
@@ -48,6 +62,16 @@ export default function BatchStudio() {
 
   useEffect(() => {
     batchesApi.list().then(setRecent).catch(() => setRecent([]));
+  }, []);
+
+  useEffect(() => {
+    saveStyle(style);
+    try { localStorage.setItem('qreate_language', language); } catch { /* ignore */ }
+  }, [style, language]);
+
+  const handleVoice = useCallback((lang: string, voiceId: string, gender: 'male' | 'female') => {
+    setLanguage(lang);
+    setStyle((s) => (s.voice_id === voiceId ? s : { ...s, voice_id: voiceId, voice_gender: gender }));
   }, []);
 
   const topicList = mode === 'single'
@@ -71,7 +95,7 @@ export default function BatchStudio() {
           language,
           tone,
           audience,
-          voice_gender: voiceGender,
+          ...style,
           additional_instructions: instructions || undefined,
           user_media: media,
         },
@@ -88,16 +112,17 @@ export default function BatchStudio() {
     <div className="p-8 max-w-4xl mx-auto animate-fade-in">
       <div className="mb-8">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Layers className="w-6 h-6 text-primary" /> Batch Studio
+          <Layers className="w-6 h-6 text-primary" /> Reel Studio
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Paste topics, ideas or trends — one per line. Each becomes a publish-ready 9:16 video with a 3-second hook,
-          voiceover, real footage and captions.
+          Describe your idea, pick the format, look and voice. Qreate researches trends, writes a 3-second hook,
+          finds real footage and edits a publish-ready 9:16 reel.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
+          <StepTitle n={1} title="Your idea" />
           <div className="space-y-4">
             <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
               {(['single', 'batch'] as const).map((m) => (
@@ -124,11 +149,25 @@ export default function BatchStudio() {
             {mode === 'batch' && (
               <Input label="Batch name (optional)" placeholder="e.g. Monday trend drop" value={name} onChange={(e) => setName(e.target.value)} />
             )}
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          </div>
+        </Card>
+
+        <Card>
+          <StepTitle n={2} title="Style" />
+          <StylePanel value={style} onChange={setStyle} />
+        </Card>
+
+        <Card>
+          <StepTitle n={3} title="Voice & language" />
+          <VoicePicker language={language} voiceId={style.voice_id} onChange={handleVoice} />
+        </Card>
+
+        <Card>
+          <StepTitle n={4} title="Details" />
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <Select label="Length" value={duration} onChange={(e) => setDuration(e.target.value)} options={DURATION_OPTIONS} />
-              <Select label="Language" value={language} onChange={(e) => setLanguage(e.target.value)} options={LANGUAGE_OPTIONS} />
               <Select label="Tone" value={tone} onChange={(e) => setTone(e.target.value)} options={TONE_OPTIONS} />
-              <Select label="Voice" value={voiceGender} onChange={(e) => setVoiceGender(e.target.value as 'male' | 'female')} options={VOICE_OPTIONS} />
             </div>
             <Input label="Audience" value={audience} onChange={(e) => setAudience(e.target.value)} />
             <Textarea

@@ -58,6 +58,8 @@ class StockContext:
     """Per-job state: avoids reusing the same clip twice in one video."""
     used_ids: Set[str] = field(default_factory=set)
     credits: List[str] = field(default_factory=list)
+    visual_style: str = "real"     # real | animated | mixed
+    people_focus: bool = True      # prefer shots with people in them
 
 
 # Place words are non-negotiable: "mumbai skyline" must not return Dubai.
@@ -151,22 +153,23 @@ async def _pexels_photos(query: str) -> List[Dict]:
 
 # ── Pixabay ───────────────────────────────────────────────────────────────────
 
-async def _pixabay_videos(query: str, min_duration: float) -> List[Dict]:
+async def _pixabay_videos(query: str, min_duration: float, style: str = "real") -> List[Dict]:
     key = get_settings().PIXABAY_API_KEY
     if not key:
         return []
-    cache_key = f"pixabay_v:{query}"
+    cache_key = f"pixabay_v:{style}:{query}"
+    video_type = {"real": "film", "animated": "animation"}.get(style, "all")
     data = _search_cache.get(cache_key)
     if data is None:
         data = await get_json(
             "https://pixabay.com/api/videos/",
-            params={"key": key, "q": query[:100], "per_page": 15, "safesearch": "true"},
+            params={"key": key, "q": query[:100], "per_page": 15, "safesearch": "true", "video_type": video_type},
         ) or {}
         _search_cache.set(cache_key, data)
     out = []
     for rank, hit in enumerate(data.get("hits", [])):
         # Real camera footage only — Pixabay marks motion graphics as type "animation"
-        if hit.get("type") not in (None, "film") or _NOT_REAL.search(hit.get("tags", "")):
+        if style == "real" and (hit.get("type") not in (None, "film") or _NOT_REAL.search(hit.get("tags", ""))):
             continue
         variants = hit.get("videos", {})
         f = variants.get("large") if (variants.get("large") or {}).get("url") else variants.get("medium")
@@ -179,20 +182,21 @@ async def _pixabay_videos(query: str, min_duration: float) -> List[Dict]:
     return out
 
 
-async def _pixabay_photos(query: str) -> List[Dict]:
+async def _pixabay_photos(query: str, style: str = "real") -> List[Dict]:
     key = get_settings().PIXABAY_API_KEY
     if not key:
         return []
-    cache_key = f"pixabay_p:{query}"
+    cache_key = f"pixabay_p:{style}:{query}"
+    image_type = {"real": "photo", "animated": "illustration"}.get(style, "all")
     data = _search_cache.get(cache_key)
     if data is None:
         data = await get_json(
             "https://pixabay.com/api/",
-            params={"key": key, "q": query[:100], "image_type": "photo", "orientation": "vertical",
+            params={"key": key, "q": query[:100], "image_type": image_type, "orientation": "vertical",
                     "per_page": 20, "safesearch": "true", "min_height": 1200},
         ) or {}
         _search_cache.set(cache_key, data)
-    hits = [h for h in data.get("hits", []) if not _NOT_REAL.search(h.get("tags", ""))]
+    hits = [h for h in data.get("hits", []) if style != "real" or not _NOT_REAL.search(h.get("tags", ""))]
     out = [
         {"id": f"pixabay_p_{h['id']}", "url": h.get("largeImageURL"), "thumb": h.get("webformatURL"),
          "kind": "image", "source": "pixabay", "relevance": relevance(query, h.get("tags", "")), "rank": i}
@@ -303,11 +307,11 @@ def _normalise_image(path: str) -> bool:
         return False
 
 
-def create_gradient_background(path: str, seed: int = 0) -> str:
+def create_gradient_background(path: str, seed: int = 0, palette=None) -> str:
     """Soft blurred gradient (used behind text cards / as an offline guarantee)."""
     s = get_settings()
     palettes = [((24, 32, 58), (88, 60, 140)), ((14, 48, 56), (40, 120, 110)), ((48, 20, 40), (150, 70, 60))]
-    top, bottom = palettes[seed % len(palettes)]
+    top, bottom = palette or palettes[seed % len(palettes)]
     img = Image.new("RGB", (s.VIDEO_WIDTH, s.VIDEO_HEIGHT))
     draw = ImageDraw.Draw(img)
     for y in range(s.VIDEO_HEIGHT):
@@ -321,6 +325,7 @@ def create_gradient_background(path: str, seed: int = 0) -> str:
 _VIDEO_FINDERS = (_pexels_videos, _pixabay_videos)
 _PHOTO_FINDERS = (_pexels_photos, _unsplash_photos, _pixabay_photos, _openverse_photos)
 VIDEO_BONUS = 0.015   # motion beats a still at equal relevance
+PEOPLE_BONUS = 0.02   # people-focus: prefer shots with humans at near-equal relevance
 
 
 async def _download_asset(cand: Dict, dest_base: str, ctx: StockContext) -> Optional[MediaAsset]:
@@ -351,7 +356,13 @@ async def _find_by_vision(queries: List[str], description: str, min_duration: fl
 
     searches = []
     for q in queries[:3]:
-        searches += [f(q, min_duration) for f in _VIDEO_FINDERS] + [f(q) for f in _PHOTO_FINDERS]
+        style = ctx.visual_style
+        if style == "animated":
+            # Illustrations / motion graphics only — photo-only sources would break the look
+            searches += [_pixabay_videos(q, min_duration, "animated"), _pixabay_photos(q, "animated")]
+        else:
+            searches += [_pexels_videos(q, min_duration), _pixabay_videos(q, min_duration, style)]
+            searches += [_pexels_photos(q), _unsplash_photos(q), _pixabay_photos(q, style), _openverse_photos(q)]
     pool: Dict[str, Dict] = {}
     for results in await asyncio.gather(*searches):
         for c in results[:6]:
@@ -365,9 +376,12 @@ async def _find_by_vision(queries: List[str], description: str, min_duration: fl
     os.makedirs(thumb_dir, exist_ok=True)
     paths = [os.path.join(thumb_dir, f"{i}.jpg") for i in range(len(cands))]
     ok = await asyncio.gather(*(download(c["thumb"], p, min_bytes=2_000) for c, p in zip(cands, paths)))
-    scores = await vision.score_images_multi(
-        [description] + queries[:2], [p if good else None for p, good in zip(paths, ok)]
-    )
+    readable = [p if good else None for p, good in zip(paths, ok)]
+    scores = await vision.score_images_multi([description] + queries[:2], readable)
+    if ctx.people_focus:
+        # Faces and hands make reels feel human — nudge shots with people up
+        people = await vision.score_images("a real person, a human face or hands", readable)
+        scores = [sc + (PEOPLE_BONUS if p >= 0.22 else 0.0) for sc, p in zip(scores, people)]
 
     for c, sc in zip(cands, scores):
         c["score"] = sc + (VIDEO_BONUS if c["kind"] == "video" else 0.0)
