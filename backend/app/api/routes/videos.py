@@ -5,7 +5,7 @@ import tempfile
 from datetime import datetime, timezone
 
 from typing import Optional
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import httpx
 
@@ -22,6 +22,7 @@ from app.services.purffle import (
     validate_purffle_mp4,
 )
 from app.services.video_engine import generate_free_video, sync_audio_and_captions_to_video
+from app.core.ratelimit import enforce
 from app.worker import queue
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
@@ -44,7 +45,7 @@ async def ensure_capacity(new_jobs: int = 1) -> None:
 
 
 @router.post("/generate", response_model=dict, status_code=202)
-async def generate_video(body: VideoGenerateRequest, background_tasks: BackgroundTasks):
+async def generate_video(body: VideoGenerateRequest, background_tasks: BackgroundTasks, request: Request):
     """Submit a video generation task.
 
     Returns immediately with a task ID. Poll /api/videos/tasks/{task_id} for status.
@@ -71,12 +72,15 @@ async def generate_video(body: VideoGenerateRequest, background_tasks: Backgroun
                 "message": "A video task for this script is already in progress",
             }
 
+    owner = await enforce(request, "video")
+
     # Qreate reel pipeline: queued, rendered by the worker pool (scales across processes)
     if body.engine == "qreate":
         if not script.get("scenes"):
             raise HTTPException(status_code=422, detail="Script has no scenes to render")
         await ensure_capacity()
         task = await queue.enqueue({
+            "owner": owner,
             "project_id": body.project_id,
             "script_id": body.script_id,
             "generation_settings": {"aspect_ratio": "9:16", "resolution": "1080x1920", "engine": "qreate"},
@@ -100,6 +104,7 @@ async def generate_video(body: VideoGenerateRequest, background_tasks: Backgroun
 
     # Create task record in DB
     task = await crud.create_video_task({
+        "owner": owner,
         "project_id": body.project_id,
         "script_id": body.script_id,
         "agnes_video_id": None,
@@ -303,6 +308,13 @@ async def _run_video_generation(
             error_message=str(e)[:500],
             completed_at=_utcnow(),
         )
+
+
+@router.get("/tasks", response_model=dict)
+async def list_tasks(active: bool = False, limit: int = 20):
+    """Recent render tasks (active=true → only queued/in-progress), newest first."""
+    tasks = await crud.list_recent_tasks(limit=min(max(limit, 1), 100), active_only=active)
+    return {"data": tasks}
 
 
 @router.get("/tasks/{task_id}", response_model=dict)

@@ -25,3 +25,10 @@ export function formatDuration(seconds: number): string {
 export function truncate(str: string, length: number): string {
   return str.length > length ? str.slice(0, length) + '...' : str;
 }
+
+
+/** The app scrolls inside <main>, not the window — scroll that container to the top. */
+export function scrollAppToTop() {
+  document.querySelector('main > div.overflow-y-auto')?.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0 });
+}

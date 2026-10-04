@@ -57,6 +57,7 @@ async def _ensure_script(job: dict, report) -> dict:
     )
     script = await crud.create_script({
         "project_id": job["project_id"],
+        "owner": job.get("owner"),
         **script_fields_for_db(generated),
         "language": opts.get("language", "English"),
         "tone": opts.get("tone", "energetic"),

@@ -19,10 +19,12 @@ interface VoicePickerProps {
   language: string;
   voiceId?: string;
   onChange: (language: string, voiceId: string, gender: 'male' | 'female') => void;
+  /** Hide the language chips and only show this language's voices */
+  lockLanguage?: boolean;
 }
 
 /** Language + voice selection with instant audio previews. */
-export default function VoicePicker({ language, voiceId, onChange }: VoicePickerProps) {
+export default function VoicePicker({ language, voiceId, onChange, lockLanguage = false }: VoicePickerProps) {
   const [catalog, setCatalog] = useState<LanguageVoices[]>([]);
   const [playing, setPlaying] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export default function VoicePicker({ language, voiceId, onChange }: VoicePicker
 
   return (
     <div className="space-y-3">
+      {!lockLanguage && (
       <div className="flex flex-wrap gap-1.5">
         {catalog.map((c) => (
           <button
@@ -71,7 +74,7 @@ export default function VoicePicker({ language, voiceId, onChange }: VoicePicker
             type="button"
             onClick={() => onChange(c.language, c.voices[0].id, c.voices[0].gender)}
             className={cn(
-              'px-2.5 py-1 rounded-full text-xs font-medium border transition-colors',
+              'px-2.5 py-1 rounded-md text-xs font-medium border transition-colors',
               c.language === current?.language
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
@@ -81,6 +84,7 @@ export default function VoicePicker({ language, voiceId, onChange }: VoicePicker
           </button>
         ))}
       </div>
+      )}
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {current?.voices.map((v) => {
           const selected = v.id === voiceId;
@@ -92,14 +96,14 @@ export default function VoicePicker({ language, voiceId, onChange }: VoicePicker
               onClick={() => onChange(current.language, v.id, v.gender)}
               onKeyDown={(e) => e.key === 'Enter' && onChange(current.language, v.id, v.gender)}
               className={cn(
-                'flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors',
-                selected ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'
+                'flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors',
+                selected ? 'border-primary bg-primary-soft' : 'border-border bg-background hover:border-primary/40'
               )}
             >
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); preview(v); }}
-                className="w-8 h-8 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center hover:bg-primary/25"
+                className="w-8 h-8 shrink-0 rounded-full border border-border bg-background text-primary flex items-center justify-center hover:bg-primary-soft"
                 aria-label={`Preview ${v.name}`}
               >
                 {loading === v.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" />

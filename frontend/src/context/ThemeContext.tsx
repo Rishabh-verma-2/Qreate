@@ -13,14 +13,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export const THEME_STORAGE_KEY = 'qreate_theme';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
-    if (saved === 'light' || saved === 'dark') {
-      return saved;
-    }
-    // Default to light mode as requested by user
-    return 'light';
-  });
+  // Light only: the design system has no dark palette (see index.css), so the app never
+  // renders half-styled dark screens. setTheme/toggleTheme are kept as no-op-safe API.
+  const [theme, setThemeState] = useState<Theme>('light');
 
   useEffect(() => {
     const root = document.documentElement;
@@ -33,12 +28,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
+    setThemeState(newTheme === 'dark' ? 'light' : newTheme);
   };
 
-  const toggleTheme = () => {
-    setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
+  const toggleTheme = () => setThemeState('light');
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>

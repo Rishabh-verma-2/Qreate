@@ -90,3 +90,20 @@ FFmpeg: uses system `ffmpeg` if present, else the `imageio-ffmpeg` bundled binar
 - [ ] Get free keys: Groq, Pexels (+ Pixabay) → set on Render
 - [ ] Rotate leaked Mongo/Cloudinary/Agnes secrets
 - [ ] Deploy backend + frontend, record 3–4 min demo
+
+## UI design system (Oct 2026 redesign — keep it)
+- "Clean tool, not a flashy landing page": white bg, #FAFAFA surface, #E4E4E7 borders, #18181B text,
+  #71717A muted, ONE solid accent #5B21B6 (≤10% of screen), success/warning/error tokens (index.css).
+- NO gradients, glows, emojis, ALL-CAPS labels, nested cards. Inter only, 8px radius, Lucide icons.
+- Light theme only (ThemeProvider forced light). Shared primitives: ui/States (PageHeader, Skeleton,
+  EmptyState), ui/Toast (useToast), create/Stepper, create/AudienceSelect, create/PhonePreview.
+- Create flow: Topic → Style (CreateVideo) → Script (ScriptEditor table) → Render (GenerateVideo step list).
+- Tailwind config changes need the Vite dev server restarted (new color tokens won't appear otherwise).
+- Visual check: puppeteer-core + local Chrome screenshots (desktop 1440 + mobile 390); check overflow.
+
+## Backend guards added
+- Rate limits per user/IP per hour (core/ratelimit.py; RATE_LIMIT_*), topics ≤ 500 chars.
+- ENVIRONMENT=production → requires JWT_SECRET_KEY (32+ chars), CORS only FRONTEND_URL (+ regex).
+- JOB_QUEUE: per-developer queue name when teammates share one MongoDB (a teammate's laptop
+  once picked up our jobs and failed on missing numpy).
+- Mongo datetimes are serialized as UTC-aware ISO strings (crud._doc_to_dict).

@@ -68,7 +68,7 @@ export default function ProjectDetail() {
           </div>
           <Button onClick={() => navigate('/create')}>
             <Plus className="w-4 h-4" />
-            New Video
+            New video
           </Button>
         </div>
       </div>

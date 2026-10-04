@@ -72,6 +72,10 @@ async def _ensure_indexes() -> None:
         await _db.video_tasks.create_index([("queue", ASCENDING), ("status", ASCENDING), ("created_at", ASCENDING)])
         await _db.video_tasks.create_index([("batch_id", ASCENDING)])
 
+        # Rate limits: count recent docs per owner
+        await _db.video_tasks.create_index([("owner", ASCENDING), ("created_at", DESCENDING)])
+        await _db.scripts.create_index([("owner", ASCENDING), ("created_at", DESCENDING)])
+
         # Batches
         await _db.batches.create_index([("created_at", DESCENDING)])
 

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Qreate API"
     APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
+    ENVIRONMENT: str = "development"   # "production" enables strict checks (JWT secret, CORS)
 
     # ── CORS ───────────────────────────────────────────────────────────────
     # Primary frontend URL plus optional comma-separated extras (e.g. Vercel previews)
@@ -18,6 +19,12 @@ class Settings(BaseSettings):
     EXTRA_CORS_ORIGINS: str = ""
     # Regex for preview deployments, e.g. https://qreate-.*\.vercel\.app
     CORS_ORIGIN_REGEX: str = r"https://.*\.vercel\.app"
+    ALLOW_LOCALHOST_CORS: bool = True     # set false in production
+
+    # ── Abuse limits ───────────────────────────────────────────────────────
+    RATE_LIMIT_VIDEOS_PER_HOUR: int = 10
+    RATE_LIMIT_SCRIPTS_PER_HOUR: int = 20
+    TOPIC_MAX_CHARS: int = 500
 
     # ── MongoDB ────────────────────────────────────────────────────────────
     MONGODB_URI: str = ""
@@ -90,6 +97,9 @@ class Settings(BaseSettings):
 
     # ── Job queue / workers ────────────────────────────────────────────────
     EMBEDDED_WORKER: bool = True      # run workers inside the API process
+    # Workers only claim jobs from this queue. Give each developer their own value when
+    # several machines share one MongoDB, so nobody's laptop picks up someone else's jobs.
+    JOB_QUEUE: str = "qreate"
     WORKER_CONCURRENCY: int = 1       # videos rendered at once per process
     JOB_LEASE_SECONDS: int = 180
     JOB_MAX_ATTEMPTS: int = 2

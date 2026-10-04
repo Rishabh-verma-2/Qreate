@@ -1,264 +1,118 @@
-# 🎬 Qreate — Full-Stack AI Video Generation Platform
+# Qreate — AI video studio for Qoneqt
 
-<p align="center">
-  <b>Turn ideas and prompts into high-impact, narrated, multi-scene videos in seconds.</b>
-  <br />
-  Featuring PurffleShorts V3 procedural motion graphics, NASA space imagery, neural voiceover, and word-synchronized captions.
-</p>
+Turn a topic, idea or trend into a publish-ready vertical video for the Qoneqt Global Feed:
+trend research → hook-first script → real footage → natural voice → word-by-word captions → edited 1080×1920 MP4 with a ready-to-post caption.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Frontend-React_19_|_TypeScript_|_TailwindCSS_|_Vite-blue?style=for-the-badge&logo=react" alt="Frontend" />
-  <img src="https://img.shields.io/badge/Backend-FastAPI_|_Python_3.9+-009688?style=for-the-badge&logo=fastapi" alt="Backend" />
-  <img src="https://img.shields.io/badge/Database-MongoDB_Atlas-green?style=for-the-badge&logo=mongodb" alt="Database" />
-  <img src="https://img.shields.io/badge/Media_Storage-Cloudinary_CDN-blueviolet?style=for-the-badge&logo=cloudinary" alt="Cloudinary" />
-  <img src="https://img.shields.io/badge/Engines-PurffleShorts_V3_|_Edge--TTS_|_Agnes_GPU-orange?style=for-the-badge" alt="Engines" />
-</p>
+**Team NeoQuant · CTRL FREAK 2026 (Qoneqt AI Challenge)**
 
----
+| | |
+|---|---|
+| Live app | _add deployed frontend URL_ |
+| API | _add deployed backend URL_ (`/api/health` shows live status) |
+| Demo video | _add 3–4 min demo link_ |
 
-## ✨ Overview
-
-**Qreate** is an end-to-end full-stack studio platform designed for content creators, educators, and teams to effortlessly produce high-quality short-form and widescreen videos:
-
-1. **AI Script Generation**: Turn any topic into structured multi-scene scripts with camera directions, visual descriptions, and narration cues. Supports multi-tone selection (*Educational, Cinematic, Entertaining, Professional, Inspirational, Fast-Paced*).
-2. **Interactive Script Studio**: Live editor to refine narration, adjust scene pacing, add/remove scenes, and regenerate scenes dynamically.
-3. **Multi-Engine Video Synthesis**:
-   - 🎬 **PurffleShorts V3 Engine**: 1080×1920 (9:16 portrait) short-form generator featuring procedural motion graphics diagrams (Pillow + FFmpeg), authentic NASA / Wikimedia space imagery, and bold kinetic subtitles.
-   - ⚡ **100% Free AI Engine**: High-fidelity Microsoft Edge-TTS neural speech + photorealistic scene visuals + cinematic Ken Burns camera motion + millisecond-synchronized captions.
-   - 🤖 **Agnes AI Video Engine**: Cloud GPU video rendering (`agnes-video-2.5-flash`).
-   - 🔄 **Smart Auto-Fallback**: Automatically falls back to local synthesis engines if remote GPU queues are busy or rate-limited.
-4. **Studio Experience & Authentication**:
-   - 🔐 **MongoDB Atlas Authentication**: User registration and login with salted Bcrypt password hashing, JWT bearer tokens, and `ProtectedRoute` routing guards.
-   - 🌓 **Universal Light & Dark Mode**: Persistent theme toggle across the entire application with tailored color palettes.
-   - 📊 **Studio Dashboard & Profile**: Personalized workspace greeting, KPI metrics (rendered watch-time, active projects), quick-prompt launcher, and dedicated `/profile` settings.
-5. **Cloud Video Delivery**:
-   - Permanent video hosting and streaming via Cloudinary CDN.
-   - Cross-origin streaming download proxy (`/api/videos/download`) ensuring reliable 1-click MP4 downloads.
+![Landing](docs/screenshots/landing.png)
 
 ---
 
-## 🏛️ System Architecture
+## How it works
 
 ```mermaid
-graph TD
-    User([User / Browser]) -->|React 19 + TypeScript + Vite| UI[Qreate Web Application]
-    UI -->|JWT Bearer REST API| Backend[FastAPI Backend Engine]
-
-    subgraph Authentication & Storage
-        Backend <-->|Bcrypt + JWT| AuthDB[(MongoDB Atlas Users)]
-        Backend <-->|Projects, Scripts & Tasks| StudioDB[(MongoDB Atlas Studio)]
-        Backend -->|Stream & Store MP4| CloudCDN[(Cloudinary Video CDN)]
-    end
-
-    subgraph Scriptwriting Engine
-        Backend --> Ollama[Local Ollama / Qwen 7B]
-        Backend --> AgnesChat[Agnes AI 2.5 Flash Cloud]
-    end
-
-    subgraph Video Synthesis Engines
-        Backend --> VideoRouter{Engine Selector}
-        VideoRouter -->|PurffleShorts V3| PurffleEngine[Purffle V3 9:16 Vertical Engine]
-        VideoRouter -->|100% Free Engine| FreeEngine[Native Multi-Scene Engine]
-        VideoRouter -->|Cloud GPU| AgnesGPU[Agnes Video 2.5 Flash]
-
-        PurffleEngine --> MotionGraphics[Procedural Diagrams / Pillow]
-        PurffleEngine --> NASASourcer[NASA Images API & Wikimedia]
-        FreeEngine --> EdgeTTS[Edge-TTS Neural Voiceover]
-        FreeEngine --> FFmpegSync[FFmpeg Ken Burns & Audio/Caption Sync]
-    end
-
-    CloudCDN -->|Direct MP4 Streaming| UI
+flowchart LR
+    A[Topic / idea / trend] --> B[Semantic mapping<br/>niche, emotion, search seeds]
+    B --> C[Trend research<br/>YouTube + Google searches,<br/>Google News, Google Trends]
+    C --> D[Writer pass<br/>format, 3 hooks, scene plan]
+    D --> E[Editor pass<br/>retention rules, no AI clichés]
+    E --> F[Script editor<br/>human review]
+    F --> G[(MongoDB job queue)]
+    G --> H[Worker pool]
+    H --> I[One-take voiceover<br/>55 voices, 16 languages]
+    H --> J[Real footage<br/>Pixabay / Unsplash / Pexels,<br/>ranked by CLIP vision]
+    I --> K[FFmpeg edit<br/>~2s cuts, punch-ins, beat-synced,<br/>captions, ducked music, -14 LUFS]
+    J --> K
+    K --> L[Cloudinary CDN<br/>MP4 + caption + hashtags]
 ```
 
----
+1. **Research before writing.** The idea is mapped to search phrases; real signals (what people search on YouTube and Google, recent news, today's trends in India) go into the prompt, so scripts use real facts instead of invented numbers.
+2. **Hook in the first 3 seconds.** A writer pass picks a format (story, list, explainer, UGC, POV…), drafts three hooks and keeps the strongest; an editor pass tightens it.
+3. **Human in the loop.** The creator reviews the script as a scene table and can rewrite any single scene.
+4. **Looks like a real reel.** Real stock footage chosen by an AI that *looks* at each clip (CLIP), ~2-second shots, jump cuts and punch-ins, cuts on the music beat, whooshes on scene changes, captions that follow the voice.
 
-## 🚀 Key Features
-
-* **9:16 Vertical Shorts & 16:9 Widescreen**: Upfront format selector optimized for TikTok, Instagram Reels, YouTube Shorts, or widescreen YouTube longform.
-* **Procedural Motion Graphics**: Over 2,400 lines of procedural scientific diagrams, charts, and visualizations across 7 archetypes (`HERO_VISUAL`, `SPLIT_AWARE`, `DUAL_ZONE`, `TEXT_HEAVY`).
-* **NASA Images API Integration**: Automatically sources high-resolution imagery for space, astrophysics, and science topics.
-* **Auto-Synced Video Duration**: Exact video duration is automatically calculated from approved scene scripts — eliminating redundant duration prompts.
-* **Multi-Tone Scriptwriting**: Blend multiple tones simultaneously (e.g. *Educational + Cinematic + Dramatic*).
-* **Word-by-Word Synchronized Captions**: Subtitles rendered with exact audio alignment.
-* **Secure Studio Authentication**: Complete session management with automatic redirect to the landing page on sign out.
-* **One-Click Video Downloads**: In-browser blob downloads backed by a server-side streaming proxy.
-
----
-
-## 🛠️ Tech Stack
-
-### Frontend
-- **Framework**: React 19 with TypeScript
-- **Build Tool**: Vite
-- **Styling**: Vanilla CSS & TailwindCSS (Custom Light/Dark Tokens)
-- **Icons**: Lucide React
-- **Routing**: React Router DOM v7
-- **HTTP Client**: Axios with Bearer Interceptors
-
-### Backend
-- **Framework**: FastAPI (Python 3.9+)
-- **Server**: Uvicorn (ASGI)
-- **Database**: Motor (Async MongoDB) + PyMongo
-- **Authentication**: Passlib (Bcrypt) + PyJWT
-- **Video & Graphics**:
-  - `edge-tts` (Microsoft Neural Voiceover)
-  - `imageio-ffmpeg` (Native FFmpeg Engine)
-  - `Pillow` (Procedural 1080×1920 diagram graphics & frame rendering)
-- **Cloud Delivery**: Cloudinary Python SDK
-- **Validation**: Pydantic v2 + Pydantic Settings
-
----
-
-## 📁 Repository Structure
-
-```
-Qreate/
-├── frontend/                     # React 19 + TypeScript + Vite frontend
-│   ├── src/
-│   │   ├── components/           # UI components (Button, Card, Input, Badge, AuthModal, ProtectedRoute)
-│   │   ├── context/              # AuthContext (JWT) & ThemeContext (Light/Dark)
-│   │   ├── layouts/              # AppLayout (Sidebar, TopBar, Studio Workspace)
-│   │   ├── lib/                  # Utilities (downloadVideoFile, utils)
-│   │   ├── pages/                # Landing, Dashboard, Profile, CreateVideo, ScriptEditor, GenerateVideo, Projects, VideoLibrary
-│   │   ├── services/             # Axios API client (authApi, projectsApi, scriptsApi, videosApi)
-│   │   └── types/                # TypeScript interfaces (User, Script, Scene, VideoTask)
-│   ├── index.html
-│   ├── package.json
-│   ├── tailwind.config.js
-│   └── vite.config.ts
-│
-├── backend/                      # FastAPI Python backend
-│   ├── app/
-│   │   ├── api/routes/           # API routes (auth, health, projects, scripts, videos)
-│   │   ├── core/                 # Config (.env settings), security (Bcrypt/JWT), errors
-│   │   ├── database/             # MongoDB connection, indexing & CRUD
-│   │   ├── schemas/              # Pydantic request & response models
-│   │   └── services/
-│   │       ├── agnes/            # Agnes AI chat & video client
-│   │       ├── cloudinary/       # Cloudinary video uploader & deleter
-│   │       ├── purffle/          # PurffleShorts V3 motion graphics & visual sourcer
-│   │       ├── script/           # Script generator (Ollama local + Agnes cloud)
-│   │       └── video_engine/     # Native free multi-scene synthesis engine
-│   ├── requirements.txt          # Python dependencies
-│   ├── .env.example              # Environment template
-│   └── .env                      # Local environment secrets (ignored by git)
-│
-├── .gitignore                    # Comprehensive secrets & artifact protection
-└── README.md                     # Platform documentation
-```
-
----
-
-## 🏁 Quick Start Guide
-
-### Prerequisites
-- **Node.js**: v18+ and `npm`
-- **Python**: v3.9+
-- **MongoDB Atlas**: Free cluster connection string ([MongoDB Cloud](https://cloud.mongodb.com))
-- **Cloudinary**: Free cloud credentials ([Cloudinary Console](https://cloudinary.com))
-
----
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/Rishabh-verma-2/Qreate.git
-cd Qreate
-```
-
----
-
-### 2. Backend Setup
-```bash
-cd backend
-
-# Create and activate Python virtual environment
-python3 -m venv venv
-source venv/bin/activate       # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env
-```
-
-Edit `backend/.env` with your credentials:
-```dotenv
-# MongoDB Atlas
-MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/?retryWrites=true&w=majority
-MONGODB_DATABASE=qreate
-
-# Cloudinary CDN
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
-
-# Agnes AI (Optional / For Agnes Video GPU)
-AGNES_API_KEY=your_agnes_api_key
-AGNES_BASE_URL=https://apihub.agnes-ai.com
-
-# CORS Configuration
-FRONTEND_URL=http://localhost:5173
-```
-
-Start the backend server:
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-- API Base URL: `http://localhost:8000`
-- Interactive Swagger Docs: `http://localhost:8000/docs`
-- Health Check: `http://localhost:8000/api/health`
-
----
-
-### 3. Frontend Setup
-In a second terminal:
-```bash
-cd frontend
-
-# Install npm packages
-npm install
-
-# Start development server
-npm run dev
-```
-- Web Application: `http://localhost:5173`
-
----
-
-## 📡 API Reference
-
-| Method | Endpoint | Description |
+| Create | Script | Result |
 |---|---|---|
-| `GET` | `/api/health` | Health status for DB, Cloudinary & AI services |
-| `POST` | `/api/auth/register` | Register a new user with salted Bcrypt password |
-| `POST` | `/api/auth/login` | Authenticate user & issue JWT bearer token |
-| `GET` | `/api/auth/me` | Retrieve profile of authenticated user |
-| `POST` | `/api/auth/logout` | Invalidate current user session |
-| `POST` | `/api/projects` | Create a new video project |
-| `GET` | `/api/projects` | List all projects with script and video counts |
-| `GET` | `/api/projects/{id}` | Get project details, scripts, and video artifacts |
-| `DELETE` | `/api/projects/{id}` | Delete a project and associated media |
-| `POST` | `/api/scripts/generate` | Generate AI script with multi-tone storytelling |
-| `GET` | `/api/scripts/{id}` | Retrieve script details and scene list |
-| `PUT` | `/api/scripts/{id}` | Save modifications to script scenes |
-| `POST` | `/api/scripts/{id}/regenerate` | Regenerate script scenes with updated parameters |
-| `POST` | `/api/videos/generate` | Start video generation (Purffle V3, Free Engine, Agnes, Auto) |
-| `GET` | `/api/videos/tasks/{id}` | Poll generation task progress and status |
-| `GET` | `/api/videos` | List all completed videos |
-| `GET` | `/api/videos/{id}` | Get video metadata and streaming URL |
-| `GET` | `/api/videos/download` | Streaming proxy endpoint for cross-origin MP4 downloads |
+| ![Create](docs/screenshots/create.png) | ![Script](docs/screenshots/script.png) | ![Result](docs/screenshots/result.png) |
 
----
+## Features
 
-## 🛡️ Security & Git Hygiene
+- **Formats:** auto, UGC, storytelling, explainer, listicle, cinematic, news recap, motivational, POV
+- **Visual style:** realistic footage, animated, or mixed; option to prefer shots with people
+- **Your own media:** upload photos/clips for personal stories (weddings, trips, launches)
+- **Look:** 7 color themes + custom accent, 3 caption styles, pace, music mood
+- **Voices:** 55 neural voices in 16 languages — English, Hindi, Hinglish, Marathi, Tamil, Telugu, Bengali, Gujarati, Kannada, Malayalam, Urdu, Spanish, French, German, Portuguese, Arabic — with previews
+- **Batch studio:** many topics → many videos, rendered in parallel
+- **Three engines:** Qreate reel engine (9:16), motion-graphics engine and classic engine (any aspect ratio)
+- **Publish-ready:** MP4 download plus generated caption and hashtags
 
-- All sensitive credentials, tokens, and database URIs are isolated in `backend/.env`.
-- `.env`, `*.env`, media artifacts (`*.mp4`, `*.wav`), Python caches (`__pycache__`), and `node_modules` are excluded via `.gitignore`.
-- Password hashing is enforced with Bcrypt (minimum 12 rounds).
-- CORS middleware permits both `http://localhost:5173` and `http://127.0.0.1:5173` across all developer ports.
+## Built to scale
 
----
+- **Job queue in MongoDB** with leases: workers claim jobs atomically; a crashed worker's job is picked up again. Run more `python -m app.worker` processes on any machine to scale out.
+- **Non-blocking rendering:** FFmpeg runs as async subprocesses; the API stays responsive.
+- **Back-pressure and limits:** queue depth cap (HTTP 429), per-user hourly limits for scripts and videos, 500-character topics.
+- **Resilience:** LLM provider chain (Groq → OpenRouter → Gemini → Agnes → Ollama) with retries; footage and music fall back gracefully; a render page resumes after refresh.
+- **Health:** `/api/health` reports database, storage, script AI and footage sources.
 
-## 📄 License
-This project is licensed under the MIT License.
+## Tech stack
+
+Frontend: React 19, TypeScript, Vite, Tailwind CSS, Lucide icons.
+Backend: FastAPI, MongoDB (Motor), FFmpeg (libass), Edge TTS, open_clip (CLIP ViT-B-32), Cloudinary.
+Free media sources: Pixabay, Unsplash, Openverse (CC0 music from Freesound), bundled OFL fonts.
+
+## Run locally
+
+```bash
+# Backend
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements-ml.txt  # optional: CLIP
+cp .env.example .env      # fill MONGODB_URI, CLOUDINARY_*, one LLM key, PIXABAY_API_KEY
+uvicorn app.main:app --reload --port 8000
+
+# Frontend (second terminal)
+cd frontend
+npm install
+npm run dev               # http://localhost:5173
+```
+
+Sharing one MongoDB between teammates? Give each machine its own `JOB_QUEUE` (e.g. `qreate-yourname`) so local workers don't pick up each other's jobs.
+
+## Deploy
+
+- **Backend:** Docker (`backend/Dockerfile`, includes FFmpeg and fonts). `render.yaml` is a Render blueprint; Hugging Face Spaces (Docker, free 2 vCPU/16 GB) is a stronger free option for rendering. Production needs `ENVIRONMENT=production` and a private `JWT_SECRET_KEY` (32+ chars); the API refuses to start without it.
+- **Frontend:** Vercel, root `frontend`, env `VITE_API_BASE_URL=<backend URL>` (`vercel.json` has SPA rewrites). Set `FRONTEND_URL` on the backend to the Vercel URL — in production only that origin may call the API.
+
+## API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/health` | Live status of DB, storage, AI, footage |
+| POST | `/api/auth/register`, `/api/auth/login` | Accounts (JWT) |
+| POST | `/api/scripts/generate` | Research + write a script |
+| POST | `/api/scripts/{id}/scenes/{i}/regenerate` | Rewrite one scene |
+| POST | `/api/videos/generate` | Render a script (`engine`: qreate, purffle, free) |
+| GET | `/api/videos/tasks/{id}` · `/api/videos/tasks?active=true` | Render progress |
+| POST | `/api/pipeline/run` | Topic → finished video in one call |
+| POST/GET | `/api/batches` | Many topics → many videos |
+| GET | `/api/voices`, `/api/voices/preview` | Voice catalog and previews |
+| POST | `/api/uploads` | Creator photos/clips |
+| GET | `/api/videos` | Library |
+
+## Security
+
+- `.env` files are git-ignored; only `.env.example` placeholders are committed.
+- An early commit in this repository's history contained real credentials. Those keys must be rotated; rewriting history does not remove copies that may already exist.
+- In production the API requires a private JWT secret and restricts CORS to the deployed frontend.
+
+## Team
+
+NeoQuant — CTRL FREAK 2026.

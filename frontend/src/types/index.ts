@@ -18,6 +18,7 @@ export interface Scene {
   duration_seconds: number;
   narration: string;
   visual_description: string;
+  on_screen_text?: string;
   search_queries?: string[];
   camera_notes?: string;
   visual_type?: string;
@@ -46,6 +47,10 @@ export interface Script {
   scenes: Scene[];
   music_mood?: string;
   post?: PostCopy;
+  format?: string;
+  angle?: string;
+  research?: Inspiration & { top_shorts?: Inspiration['top_shorts'] };
+  style?: Record<string, unknown>;
   language: string;
   tone: string | string[];
   audience?: string;

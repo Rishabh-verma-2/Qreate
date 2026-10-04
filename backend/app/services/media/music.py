@@ -76,7 +76,11 @@ async def detect_beats(path: str, max_seconds: float = 35.0) -> List[float]:
     raw, _ = await proc.communicate()
     if not raw:
         return []
-    return await asyncio.to_thread(_onsets, raw)
+    try:
+        return await asyncio.to_thread(_onsets, raw)
+    except Exception as e:  # beat-snapping is a nicety — never fail a render over it
+        logger.warning(f"Beat detection skipped: {e}")
+        return []
 
 
 def _onsets(raw: bytes) -> List[float]:

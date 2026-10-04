@@ -10,7 +10,7 @@ export function Card({ children, className, hover = false }: CardProps) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card p-6',
+        'rounded-lg border border-border bg-card p-6',
         hover && 'card-hover cursor-pointer',
         className
       )}
@@ -25,7 +25,7 @@ export function CardHeader({ children, className }: { children: React.ReactNode;
 }
 
 export function CardTitle({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <h3 className={cn('text-lg font-semibold text-foreground', className)}>{children}</h3>;
+  return <h3 className={cn('text-base font-semibold text-foreground', className)}>{children}</h3>;
 }
 
 export function CardDescription({ children, className }: { children: React.ReactNode; className?: string }) {

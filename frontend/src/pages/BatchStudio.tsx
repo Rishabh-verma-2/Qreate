@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, ChevronRight, Layers, Loader2, Sparkles, XCircle } from 'lucide-react';
+import { AlertCircle, ChevronRight, Loader2, Sparkles, XCircle } from 'lucide-react';
 import { batchesApi } from '../services/api';
 import type { Batch, BatchItem, UserMedia } from '../types';
 import { Button } from '../components/ui/Button';
@@ -11,6 +11,7 @@ import { CopyPostButton, InspirationPanel, VerticalPlayer } from '../components/
 import { downloadUrl } from '../lib/video';
 import { formatDate } from '../lib/utils';
 import { DURATION_OPTIONS, TONE_OPTIONS } from '../lib/options';
+import { PageHeader } from '../components/ui/States';
 import { loadStyle, saveStyle, type StyleChoices } from '../lib/styleOptions';
 import StylePanel from '../components/StylePanel';
 import VoicePicker from '../components/VoicePicker';
@@ -53,8 +54,7 @@ export default function BatchStudio() {
   const [style, setStyle] = useState<StyleChoices>(loadStyle);
   const [tone, setTone] = useState('energetic');
   const [audience, setAudience] = useState('Gen Z & young professionals in India');
-  const [mode, setMode] = useState<'single' | 'batch'>('single');
-  const [instructions, setInstructions] = useState('');
+    const [instructions, setInstructions] = useState('');
   const [media, setMedia] = useState<UserMedia[]>([]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -74,14 +74,12 @@ export default function BatchStudio() {
     setStyle((s) => (s.voice_id === voiceId ? s : { ...s, voice_id: voiceId, voice_gender: gender }));
   }, []);
 
-  const topicList = mode === 'single'
-    ? (topics.trim() ? [topics.trim()] : [])
-    : topics.split('\n').map((t) => t.trim()).filter(Boolean);
+  const topicList = topics.split('\n').map((t) => t.trim()).filter(Boolean);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (topicList.length === 0) {
-      setError(mode === 'single' ? 'Describe your video idea' : 'Add at least one topic (one per line)');
+      setError('Add at least one topic (one per line)');
       return;
     }
     setSubmitting(true);
@@ -109,46 +107,25 @@ export default function BatchStudio() {
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Layers className="w-6 h-6 text-primary" /> Reel Studio
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Describe your idea, pick the format, look and voice. Qreate researches trends, writes a 3-second hook,
-          finds real footage and edits a publish-ready 9:16 reel.
-        </p>
-      </div>
+    <div className="px-4 py-8 sm:px-8 max-w-4xl mx-auto">
+      <PageHeader
+        title="Batch studio"
+        description="Paste several topics, one per line. Each becomes its own video with the same style and voice, rendered in parallel."
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
-          <StepTitle n={1} title="Your idea" />
+          <StepTitle n={1} title="Topics" />
           <div className="space-y-4">
-            <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
-              {(['single', 'batch'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMode(m)}
-                  className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  {m === 'single' ? 'One video' : 'Batch (one topic per line)'}
-                </button>
-              ))}
-            </div>
             <Textarea
-              label={mode === 'single' ? 'Your idea, topic or trend' : `Topics (${topicList.length})`}
-              rows={mode === 'single' ? 4 : 7}
-              placeholder={mode === 'single'
-                ? 'e.g. A warm 30-second reel for our wedding — how we met, haldi, sangeet, pheras, and a thank-you to family'
-                : 'Why your phone battery dies faster in winter\n3 money habits every 20-something should start\nThe hidden history of chai in India'}
+              label={`Topics (${topicList.length})`}
+              rows={7}
+              placeholder={'Why your phone battery dies faster in winter\n3 money habits every 20-something should start\nThe hidden history of chai in India'}
               value={topics}
               onChange={(e) => { setTopics(e.target.value); setError(''); }}
               error={error}
             />
-            {mode === 'batch' && (
-              <Input label="Batch name (optional)" placeholder="e.g. Monday trend drop" value={name} onChange={(e) => setName(e.target.value)} />
-            )}
+            <Input label="Batch name (optional)" placeholder="e.g. Monday trend drop" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
         </Card>
 
@@ -196,7 +173,7 @@ export default function BatchStudio() {
               <button
                 key={b.id}
                 onClick={() => navigate(`/batch/${b.id}`)}
-                className="w-full flex items-center justify-between p-4 rounded-xl border border-border bg-card card-hover text-left"
+                className="w-full flex items-center justify-between p-4 rounded-lg border border-border bg-card card-hover text-left"
               >
                 <div>
                   <p className="font-medium text-sm">{b.name}</p>
@@ -219,7 +196,7 @@ function BatchItemCard({ item, topic }: { item: BatchItem; topic: string }) {
   const url = video?.cloudinary_url;
   const active = task.status === 'queued' || task.status === 'in_progress';
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+    <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col">
       {task.status === 'completed' && url ? (
         <VerticalPlayer url={url} poster={video?.thumbnail_url} className="rounded-none" />
       ) : (

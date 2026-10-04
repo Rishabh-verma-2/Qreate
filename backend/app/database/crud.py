@@ -26,6 +26,10 @@ def _doc_to_dict(doc: dict) -> dict:
         elif isinstance(value, ObjectId):
             result[key] = str(value)
         elif isinstance(value, datetime):
+            # MongoDB returns naive datetimes that are UTC — label them so browsers
+            # don't read them as local time (was off by +5:30 in India)
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
             result[key] = value.isoformat()
         elif isinstance(value, dict):
             result[key] = _doc_to_dict(value)
@@ -178,6 +182,15 @@ async def update_video_task(task_id: str, data: Dict[str, Any]) -> Optional[dict
     except Exception:
         return None
     return _doc_to_dict(result) if result else None
+
+
+async def list_recent_tasks(limit: int = 20, active_only: bool = False) -> List[dict]:
+    db = get_db()
+    if db is None:
+        return []
+    query = {"status": {"$in": ["pending", "queued", "in_progress"]}} if active_only else {}
+    cursor = db.video_tasks.find(query, {"generation_settings": 0}).sort("created_at", -1).limit(limit)
+    return [_doc_to_dict(doc) async for doc in cursor]
 
 
 async def list_tasks_for_project(project_id: str) -> List[dict]:

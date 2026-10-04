@@ -350,6 +350,44 @@ async def generate_script(
         return draft
 
 
+SCENE_REWRITE_PROMPT = """You rewrite ONE scene of a short-form video script so it is sharper, more specific and more human,
+while fitting the scenes around it. Keep the same language and roughly the same length. Scene 1 must still open
+with a hook. Reply with JSON only:
+{"narration": "...", "on_screen_text": "1-4 words", "visual_description": "...", "search_queries": ["2-4 words", "2-3 words"]}"""
+
+
+async def regenerate_scene(script: Dict[str, Any], index: int, instructions: Optional[str] = None) -> Dict[str, Any]:
+    """Rewrite scene `index` (0-based) in the context of the full script."""
+    scenes = script.get("scenes") or []
+    if not 0 <= index < len(scenes):
+        raise ValueError("scene index out of range")
+    outline = "\n".join(f"{i + 1}. {s.get('narration', '')}" for i, s in enumerate(scenes))
+
+    def validate(obj: Dict[str, Any]) -> Dict[str, Any]:
+        narration = _speakable(str(obj.get("narration") or ""))
+        if not narration:
+            raise ValueError("empty narration")
+        queries = [q.strip() for q in (obj.get("search_queries") or []) if isinstance(q, str) and q.strip()]
+        return {
+            **scenes[index],
+            "narration": narration,
+            "on_screen_text": _speakable(str(obj.get("on_screen_text") or ""))[:40],
+            "visual_description": str(obj.get("visual_description") or "").strip(),
+            "search_queries": queries[:3] or scenes[index].get("search_queries", []),
+            "duration_seconds": max(2, round(_count_words(narration) / 2.5)),
+        }
+
+    user = (
+        f"Video title: {script.get('title', '')}\nLanguage: {script.get('language', 'English')}\n"
+        f"Full script:\n{outline}\n\nRewrite scene {index + 1}."
+        + (f"\nCreator's instructions: {instructions}" if instructions else "")
+    )
+    return await generate_json(
+        [{"role": "system", "content": SCENE_REWRITE_PROMPT}, {"role": "user", "content": user}],
+        validate=validate, temperature=0.85, max_tokens=600,
+    )
+
+
 def script_fields_for_db(script: Dict[str, Any]) -> Dict[str, Any]:
     """The subset of a generated script that is persisted on the script document."""
     return {
