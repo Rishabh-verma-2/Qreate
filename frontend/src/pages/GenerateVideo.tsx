@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Video,
@@ -9,15 +9,31 @@ import {
   AlertCircle,
   ExternalLink,
   ChevronRight,
+  Download,
 } from 'lucide-react';
 import { scriptsApi, videosApi } from '../services/api';
 import type { Script, VideoTask } from '../types';
+import { downloadVideoFile } from '../lib/download';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { Select } from '../components/ui/Input';
 import { StatusBadge } from '../components/ui/Badge';
-import { CopyPostButton, VerticalPlayer } from '../components/VideoCard';
-import { downloadUrl } from '../lib/video';
 
+const ASPECT_RATIO_OPTIONS = [
+  { value: '9:16', label: '9:16 — Vertical (Shorts, Reels, TikTok)' },
+  { value: '16:9', label: '16:9 — Widescreen (YouTube, Landscape)' },
+  { value: '1:1', label: '1:1 — Square (720×720)' },
+  { value: '4:3', label: '4:3 (960×720)' },
+  { value: '3:4', label: '3:4 (720×960)' },
+];
+
+const ENGINE_OPTIONS = [
+  { value: 'qreate', label: '📱 Qreate Reel Engine (9:16 — real footage, trend research, reel-style edit)' },
+  { value: 'purffle', label: '🎬 PurffleShorts V3 (9:16 Portrait — NASA & Motion Graphics)' },
+  { value: 'free', label: '⚡ Free AI Multi-Scene Engine (Neural Voice + Visuals — 100% Free)' },
+  { value: 'auto', label: '🔄 Auto (Try Agnes AI, fallback to Free Engine if rate-limited)' },
+  { value: 'agnes', label: '🤖 Agnes Video Generator (Requires Token Plan on Agnes)' },
+];
 
 const POLL_INTERVAL = 4000; // ms
 
@@ -31,7 +47,25 @@ export default function GenerateVideo() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [task, setTask] = useState<VideoTask | null>(null);
+  const [aspectRatio, setAspectRatio] = useState(() => {
+    const stateAspect = (location.state as { aspectRatio?: string })?.aspectRatio;
+    return stateAspect || localStorage.getItem('qreate_pref_aspect') || '9:16';
+  });
+  const [engine, setEngine] = useState(() => {
+    return localStorage.getItem('qreate_pref_engine') || 'qreate';
+  });
   const [error, setError] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  // Auto-calculate exact runtime from the approved script
+  const totalScriptDuration = useMemo(() => {
+    if (!script) return 60;
+    if (script.duration_seconds && script.duration_seconds > 0) return script.duration_seconds;
+    if (script.scenes && script.scenes.length > 0) {
+      return script.scenes.reduce((sum, s) => sum + (s.duration_seconds || 6), 0);
+    }
+    return 60;
+  }, [script]);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -71,6 +105,10 @@ export default function GenerateVideo() {
       const createdTask = await videosApi.generate({
         project_id: script.project_id,
         script_id: scriptId,
+        mode: 'text',
+        duration_seconds: totalScriptDuration,
+        aspect_ratio: aspectRatio,
+        engine: engine,
       });
       setTask(createdTask);
       if (createdTask.status !== 'completed' && createdTask.status !== 'failed') {
@@ -83,7 +121,7 @@ export default function GenerateVideo() {
     }
   }
 
-  const videoUrl = task?.cloudinary_url;
+  const videoUrl = task?.cloudinary_url || (task?.generation_settings as Record<string, string | undefined>)?.video_url;
 
   if (loading) {
     return (
@@ -97,35 +135,107 @@ export default function GenerateVideo() {
     <div className="p-8 max-w-3xl mx-auto animate-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Generate Video</h1>
-        <p className="text-sm text-muted-foreground mt-1">Render your script into a publish-ready vertical video</p>
+        <p className="text-sm text-muted-foreground mt-1">Configure and generate your AI video</p>
       </div>
 
       {/* Script Summary */}
       {script && (
-        <Card className="mb-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Approved Script</h2>
-          <p className="font-semibold">{script.title}</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {script.scenes.length} scenes · {script.language} · {script.tone}
-          </p>
+        <Card className="mb-6 border border-border/80 shadow-xs">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Approved Script
+            </h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+              Ready to Render
+            </span>
+          </div>
+
+          <h3 className="text-lg font-bold text-foreground">{script.title}</h3>
+
+          <div className="flex flex-wrap items-center gap-2 mt-2.5">
+            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-primary/10 text-primary border border-primary/20 flex items-center gap-1.5 shadow-xs">
+              <Clock className="w-3.5 h-3.5" />
+              Duration: ~{totalScriptDuration}s
+            </span>
+            <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-muted text-foreground">
+              {script.scenes.length} Scenes
+            </span>
+            <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-muted text-muted-foreground">
+              {script.language}
+            </span>
+            <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-muted text-muted-foreground">
+              {Array.isArray(script.tone)
+                ? script.tone.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(', ')
+                : typeof script.tone === 'string'
+                ? script.tone
+                    .split(',')
+                    .map((t) => t.trim().charAt(0).toUpperCase() + t.trim().slice(1))
+                    .join(', ')
+                : 'Professional'}
+            </span>
+          </div>
+
           {script.hook && (
-            <p className="text-sm text-muted-foreground mt-2 italic border-l-2 border-primary/30 pl-3">
+            <p className="text-sm text-muted-foreground mt-3 italic border-l-2 border-primary/40 pl-3">
               "{script.hook}"
             </p>
           )}
         </Card>
       )}
 
-      {/* Output format */}
+      {/* Video Settings */}
       {!task && (
-        <Card className="mb-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Output</h2>
-          <ul className="text-sm text-muted-foreground space-y-1.5">
-            <li>📱 Vertical 1080×1920 (9:16) for the Qoneqt Global Feed</li>
-            <li>🎙️ Neural voiceover with word-by-word captions</li>
-            <li>🎬 Real stock footage per scene, colour-graded, with smooth transitions</li>
-            <li>🎵 Mood-matched royalty-free music, ducked under the voice</li>
-          </ul>
+        <Card className="mb-6 border border-border/80 shadow-xs">
+          <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
+            <h2 className="text-sm font-bold text-foreground uppercase tracking-wider">Video Settings</h2>
+            <span className="text-xs text-muted-foreground">Visual Directing</span>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Select
+              label="Aspect Ratio"
+              value={aspectRatio}
+              onChange={(e) => setAspectRatio(e.target.value)}
+              options={ASPECT_RATIO_OPTIONS}
+            />
+
+            {/* Synced duration display */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-foreground">Video Duration</label>
+              <div className="h-10 px-3.5 rounded-lg border border-border bg-muted/40 flex items-center justify-between text-sm text-foreground">
+                <span className="font-semibold flex items-center gap-1.5 text-primary">
+                  <Clock className="w-4 h-4" />
+                  ~{totalScriptDuration} seconds
+                </span>
+                <span className="text-[11px] text-muted-foreground font-medium bg-background px-2 py-0.5 rounded border border-border">
+                  Synced to script
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <Select
+              label="Generation Engine"
+              value={engine}
+              onChange={(e) => setEngine(e.target.value)}
+              options={ENGINE_OPTIONS}
+            />
+          </div>
+
+          <div className="mt-4 p-3.5 rounded-xl bg-muted/50 text-sm text-muted-foreground border border-border/60">
+            {engine === 'qreate' ? (
+              <span>📱 <strong className="text-yellow-400">Qreate Reel Engine:</strong> Real stock footage picked by CLIP vision, ~2s jump cuts with punch-ins, beat-synced cuts, whooshes, word-by-word captions and ducked music. Queued and rendered by scalable workers.</span>
+            ) : engine === 'purffle' ? (
+              <span>🎬 <strong className="text-purple-400">PurffleShorts V3:</strong> High-impact 9:16 vertical shorts with authentic NASA/Wikimedia imagery, procedural motion graphics diagrams, and bold subtitles.</span>
+            ) : engine === 'free' ? (
+              <span>⚡ <strong className="text-green-400">100% Free Engine:</strong> Generates multi-scene neural narration via Edge-TTS and scene visuals, exported directly to Cloudinary.</span>
+            ) : engine === 'auto' ? (
+              <span>🔄 <strong className="text-primary">Auto Engine:</strong> Tries Agnes AI GPU rendering; if Agnes rate limits or queue is full, seamlessly uses the Free Engine.</span>
+            ) : (
+              <span>🤖 <strong className="text-foreground">Agnes AI:</strong> Direct Agnes cloud GPU rendering (requires paid token plan on Agnes platform).</span>
+            )}
+          </div>
         </Card>
       )}
 
@@ -162,22 +272,28 @@ export default function GenerateVideo() {
           )}
 
           {/* Status messages */}
+          {task.status === 'pending' && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Clock className="w-4 h-4 animate-pulse text-purple-400" />
+              Initializing video rendering pipeline...
+            </div>
+          )}
           {task.status === 'queued' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="w-4 h-4 animate-pulse" />
-              Waiting for a free render worker...
+              <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+              In queue — sourcing visuals and preparing motion graphics...
             </div>
           )}
           {task.status === 'in_progress' && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              <span className="capitalize">{task.stage || 'rendering'}</span>… usually under 2 minutes.
+              Synthesizing video — building neural audio, visual assets & synced captions...
             </div>
           )}
           {task.status === 'completed' && (
             <div className="flex items-center gap-2 text-sm text-green-400">
               <CheckCircle2 className="w-4 h-4" />
-              Video generated successfully!
+              Video generated and synced successfully!
             </div>
           )}
           {task.status === 'failed' && (
@@ -190,16 +306,48 @@ export default function GenerateVideo() {
           {/* Video preview / download */}
           {task.status === 'completed' && videoUrl && (
             <div className="mt-4 space-y-3">
-              <VerticalPlayer url={videoUrl} poster={task.thumbnail_url} className="max-w-xs mx-auto border border-border" />
-              <div className="flex items-center justify-center gap-4">
-                <a href={videoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium">
-                  <ExternalLink className="w-4 h-4" />
-                  Open video
+              <video
+                src={videoUrl}
+                controls
+                className="w-full rounded-xl border border-border bg-black shadow-lg"
+              />
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsDownloading(true);
+                    try {
+                      const cleanTitle = (script?.title || 'video').replace(/[^a-zA-Z0-9_-]/g, '_');
+                      await downloadVideoFile(videoUrl, `qreate_${cleanTitle}_${task.id}.mp4`);
+                    } finally {
+                      setIsDownloading(false);
+                    }
+                  }}
+                  disabled={isDownloading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving Video...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Video (.mp4)</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href={videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-accent text-xs font-medium text-foreground transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>Open Direct Link</span>
                 </a>
-                <a href={downloadUrl(videoUrl)} className="text-sm text-primary hover:text-primary/80 font-medium">
-                  Download MP4
-                </a>
-                {script && <CopyPostButton video={{ post: script.post, title: script.title }} />}
               </div>
             </div>
           )}
@@ -213,6 +361,11 @@ export default function GenerateVideo() {
         </Button>
 
         <div className="flex items-center gap-3">
+          {task?.status === 'completed' && (
+            <Button onClick={() => setTask(null)} variant="outline">
+              New Generation
+            </Button>
+          )}
           {task?.status === 'completed' && (
             <Button onClick={() => navigate('/library')} variant="outline">
               View Library

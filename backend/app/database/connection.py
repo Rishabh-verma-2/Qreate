@@ -50,6 +50,10 @@ async def _ensure_indexes() -> None:
     if _db is None:
         return
     try:
+        # Users
+        await _db.users.create_index([("email", ASCENDING)], unique=True)
+        await _db.users.create_index([("created_at", DESCENDING)])
+
         # Projects
         await _db.projects.create_index([("created_at", DESCENDING)])
         await _db.projects.create_index([("status", ASCENDING)])
@@ -65,7 +69,7 @@ async def _ensure_indexes() -> None:
         await _db.video_tasks.create_index([("status", ASCENDING)])
         await _db.video_tasks.create_index([("created_at", DESCENDING)])
         # Queue claim: oldest queued job first
-        await _db.video_tasks.create_index([("status", ASCENDING), ("created_at", ASCENDING)])
+        await _db.video_tasks.create_index([("queue", ASCENDING), ("status", ASCENDING), ("created_at", ASCENDING)])
         await _db.video_tasks.create_index([("batch_id", ASCENDING)])
 
         # Batches

@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.errors import QreateError, qreate_exception_handler, generic_exception_handler
 from app.database.connection import connect_db, close_db, get_db
-from app.api.routes import health, pipeline, projects, scripts, uploads, videos
+from app.api.routes import auth, health, pipeline, projects, scripts, uploads, videos
 from app.services.media import vision
 from app.services.media.http import close_client
 from app.worker.runner import start_embedded_pool, stop_embedded_pool
@@ -30,10 +30,24 @@ app = FastAPI(
 )
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
+cors_origins = [
+    *settings.cors_origins,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+]
+if "*" in cors_origins:
+    cors_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_origin_regex=settings.CORS_ORIGIN_REGEX or None,
+    allow_origins=cors_origins,
+    # Local dev on any port + deployed previews (CORS_ORIGIN_REGEX, e.g. *.vercel.app)
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    + (f"|{settings.CORS_ORIGIN_REGEX}" if settings.CORS_ORIGIN_REGEX else ""),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,6 +75,7 @@ async def shutdown():
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(scripts.router)
 app.include_router(videos.router)

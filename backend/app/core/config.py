@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     AGNES_CHAT_MODEL: str = "agnes-2.5-flash"
     AGNES_VIDEO_MODEL: str = "agnes-video-2.5-flash"
     AGNES_VIDEO_SIZE: str = "720P"
+    AGNES_IMAGE_MODEL: str = "agnes-image-2.5-flash"
+
+    # Legacy Agnes video engine polling (used by the purffle/free/agnes engines)
+    VIDEO_POLL_INTERVAL_SECONDS: int = 10
+    VIDEO_POLL_MAX_ATTEMPTS: int = 120
+    VIDEO_QUEUE_RETRY_MAX_SECONDS: int = 900
 
     # ── Free stock media (real footage — keeps videos from looking AI-made) ─
     PEXELS_API_KEY: str = ""
@@ -89,6 +95,11 @@ class Settings(BaseSettings):
     JOB_MAX_ATTEMPTS: int = 2
     MAX_QUEUE_DEPTH: int = 200        # reject new jobs above this (HTTP 429)
     MAX_BATCH_SIZE: int = 25
+
+    # ── Authentication & Security ──────────────────────────────────────────
+    JWT_SECRET_KEY: str = "qreate-jwt-secret-key-super-secure-token-2026"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_DAYS: int = 7
 
     class Config:
         env_file = ".env"

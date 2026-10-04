@@ -1,20 +1,41 @@
-"""Video generation (queued), task polling, and retrieval routes."""
-
+import asyncio
 import logging
+import os
+import tempfile
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
+import httpx
 
 from app.core.config import get_settings
+from app.core.errors import AgnesAPIError, AgnesQueueFullError
 from app.database import crud
 from app.schemas.schemas import VideoGenerateRequest
+from app.services.agnes.client import get_agnes_client
+from app.services.cloudinary.uploader import upload_video_file, upload_video_from_url
+from app.services.script.generator import script_to_video_prompt
+from app.services.purffle import (
+    PurffleRenderResult,
+    qreate_script_to_purffle,
+    run_purffle_render,
+    source_visuals_for_scenes,
+    validate_purffle_mp4,
+)
+from app.services.video_engine import generate_free_video, sync_audio_and_captions_to_video
 from app.worker import queue
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
 logger = logging.getLogger(__name__)
 
 
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
 async def ensure_capacity(new_jobs: int = 1) -> None:
-    """Back-pressure: refuse work when the queue is already deep (HTTP 429)."""
+    """Back-pressure for the queued pipeline: refuse work when the queue is deep (HTTP 429)."""
     depth = await queue.queue_depth()
     limit = get_settings().MAX_QUEUE_DEPTH
     if depth + new_jobs > limit:
@@ -25,30 +46,363 @@ async def ensure_capacity(new_jobs: int = 1) -> None:
 
 
 @router.post("/generate", response_model=dict, status_code=202)
-async def generate_video(body: VideoGenerateRequest):
-    """Queue a render for an existing (edited) script. Poll /api/videos/tasks/{id}."""
+async def generate_video(body: VideoGenerateRequest, background_tasks: BackgroundTasks):
+    """Submit a video generation task.
+
+    Returns immediately with a task ID. Poll /api/videos/tasks/{task_id} for status.
+    Prevents duplicate submissions for the same script.
+    """
+    # Validate project and script
     project = await crud.get_project(body.project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
     script = await crud.get_script(body.script_id)
     if not script:
         raise HTTPException(status_code=404, detail="Script not found")
-    if not script.get("scenes"):
-        raise HTTPException(status_code=422, detail="Script has no scenes to render")
 
-    # Idempotency: one active render per script
-    for t in await crud.list_tasks_for_project(body.project_id):
-        if t.get("script_id") == body.script_id and t.get("status") in queue.ACTIVE_STATUSES:
-            return {"data": t, "message": "A video task for this script is already in progress"}
+    # Prevent duplicate in-progress task for same script
+    existing_tasks = await crud.list_tasks_for_project(body.project_id)
+    for t in existing_tasks:
+        if (
+            t.get("script_id") == body.script_id
+            and t.get("status") in ("pending", "queued", "in_progress")
+        ):
+            return {
+                "data": t,
+                "message": "A video task for this script is already in progress",
+            }
 
-    await ensure_capacity()
-    task = await queue.enqueue({
+    # Qreate reel pipeline: queued, rendered by the worker pool (scales across processes)
+    if body.engine == "qreate":
+        if not script.get("scenes"):
+            raise HTTPException(status_code=422, detail="Script has no scenes to render")
+        await ensure_capacity()
+        task = await queue.enqueue({
+            "project_id": body.project_id,
+            "script_id": body.script_id,
+            "generation_settings": {"aspect_ratio": "9:16", "resolution": "1080x1920", "engine": "qreate"},
+        })
+        logger.info(f"Qreate pipeline job queued: {task['id']}")
+        return {"data": task, "message": "Video generation queued"}
+
+    # Build video prompt from script (PurffleShorts / free / Agnes engines)
+    prompt = script_to_video_prompt(script)
+    if not prompt:
+        raise HTTPException(status_code=422, detail="Script has no content to generate video from")
+
+    settings = get_settings()
+    generation_settings = {
+        "model": settings.AGNES_VIDEO_MODEL,
+        "mode": body.mode,
+        "duration_seconds": body.duration_seconds,
+        "aspect_ratio": body.aspect_ratio,
+        "seed": body.seed,
+        "engine": body.engine,
+        "prompt_preview": prompt[:200],
+    }
+
+    # Create task record in DB
+    task = await crud.create_video_task({
         "project_id": body.project_id,
         "script_id": body.script_id,
-        "generation_settings": {"aspect_ratio": "9:16", "resolution": "1080x1920", "engine": "stock-footage"},
+        "agnes_video_id": None,
+        "status": "pending",
+        "progress": 0,
+        "error_message": None,
+        "generation_settings": generation_settings,
+        "completed_at": None,
     })
-    logger.info(f"Video job queued: {task['id']}")
-    return {"data": task, "message": "Video generation queued"}
+
+    task_id = task["id"]
+    logger.info(f"Video task created: {task_id}")
+
+    # Submit to Agnes or Free Engine in background
+    background_tasks.add_task(
+        _run_video_generation,
+        task_id=task_id,
+        project_id=body.project_id,
+        prompt=prompt,
+        mode=body.mode,
+        seconds=str(body.duration_seconds),
+        aspect_ratio=body.aspect_ratio,
+        seed=body.seed,
+        script_id=body.script_id,
+        engine=body.engine,
+    )
+
+    return {"data": task, "message": "Video generation started"}
+
+
+async def _generate_via_free_engine(task_id: str, project_id: str, script_id: str, update_fn) -> bool:
+    """Render video using the Free AI Multi-Scene Video Synthesis Engine."""
+    await update_fn(status="in_progress", progress=15)
+    script = await crud.get_script(script_id)
+    if not script:
+        raise ValueError("Script not found for video generation")
+
+    async def _progress_cb(pct: int, msg: str):
+        await update_fn(progress=pct)
+
+    cloudinary_url, cloudinary_public_id, duration_sec = await generate_free_video(
+        task_id=task_id,
+        project_id=project_id,
+        script=script,
+        progress_callback=_progress_cb,
+    )
+
+    gen_video = await crud.create_generated_video({
+        "project_id": project_id,
+        "script_id": script_id,
+        "task_id": task_id,
+        "cloudinary_url": cloudinary_url,
+        "cloudinary_public_id": cloudinary_public_id,
+        "original_url": cloudinary_url,
+        "file_format": "mp4",
+        "duration_seconds": duration_sec,
+    })
+
+    await update_fn(
+        status="completed",
+        progress=100,
+        completed_at=_utcnow(),
+        generated_video_id=gen_video["id"],
+        cloudinary_url=cloudinary_url,
+    )
+    logger.info(f"[Task {task_id}] Free video synthesis completed! Video: {cloudinary_url}")
+    return True
+
+
+async def _generate_via_purffle_engine(
+    task_id: str,
+    project_id: str,
+    script_id: str,
+    aspect_ratio: str,
+    update_fn,
+) -> bool:
+    """Render video using the PurffleShorts V3 visual storytelling pipeline."""
+    await update_fn(status="in_progress", progress=15)
+
+    script = await crud.get_script(script_id)
+    if not script:
+        raise ValueError(f"Script not found for video generation: {script_id}")
+
+    await update_fn(progress=25)
+
+    # Visual sourcing: download and format high-res 1080x1920 visuals / animated diagrams
+    scenes = script.get("scenes") or []
+    topic = str(script.get("original_prompt") or script.get("title") or "Science explainer")
+    media_dir = os.path.join(tempfile.gettempdir(), f"purffle_media_{task_id}")
+
+    search_queries = None
+    try:
+        sourced = await source_visuals_for_scenes(scenes, topic, media_dir)
+        search_queries = [kw for kw, _ in sourced]
+        logger.info(f"[Task {task_id}] Sourced {len(sourced)} scene visuals into {media_dir}")
+    except Exception as v_err:
+        logger.warning(f"[Task {task_id}] Visual sourcing notice: {v_err}. Continuing with fallback visuals.")
+
+    purffle_data = qreate_script_to_purffle(script, topic=topic, scene_search_queries=search_queries)
+
+    await update_fn(progress=50)
+
+    loop = asyncio.get_running_loop()
+
+    def _sync_progress_cb(pct: int, msg: str):
+        mapped = min(85, max(50, 50 + int(pct * 0.35)))
+        loop.call_soon_threadsafe(
+            lambda: asyncio.create_task(update_fn(progress=mapped))
+        )
+
+    aspect = "9:16"
+    if aspect_ratio in ("9:16", "16:9", "1:1", "4:5"):
+        aspect = aspect_ratio
+
+    result: Optional[PurffleRenderResult] = None
+    try:
+        result = await asyncio.to_thread(
+            run_purffle_render,
+            purffle_script_data=purffle_data,
+            aspect_ratio=aspect,
+            timeout_seconds=420,
+            progress_callback=_sync_progress_cb,
+            media_dir=media_dir,
+        )
+    except Exception as run_err:
+        logger.warning(f"[Task {task_id}] Purffle CLI runner: {run_err}. Falling back to native multi-scene engine.")
+
+    # If Purffle CLI was not installed or failed, fall back seamlessly to native multi-scene engine
+    if not result or not result.ok or not result.mp4_path:
+        logger.info(f"[Task {task_id}] Using native multi-scene synthesis engine with sourced visuals.")
+        return await _generate_via_free_engine(task_id, project_id, script_id, update_fn)
+
+    await update_fn(progress=90)
+    validation = validate_purffle_mp4(result.mp4_path, expected_aspect=aspect)
+
+    cloudinary_url = None
+    cloudinary_public_id = None
+    try:
+        cloudinary_url, cloudinary_public_id = await upload_video_file(
+            file_path=result.mp4_path,
+            project_id=project_id,
+            task_id=task_id,
+        )
+    except Exception as c_err:
+        logger.warning(f"[Task {task_id}] Cloudinary upload skipped ({c_err}). Retaining local video artifact.")
+
+    duration_sec = int(round(validation.duration_seconds or result.duration_seconds or 30))
+    video_url = cloudinary_url or f"file:///{result.mp4_path.replace(os.sep, '/')}"
+
+    gen_video = await crud.create_generated_video({
+        "project_id": project_id,
+        "script_id": script_id,
+        "task_id": task_id,
+        "cloudinary_url": cloudinary_url,
+        "cloudinary_public_id": cloudinary_public_id,
+        "original_url": video_url,
+        "file_format": "mp4",
+        "duration_seconds": duration_sec,
+    })
+
+    await update_fn(
+        status="completed",
+        progress=100,
+        completed_at=_utcnow(),
+        generated_video_id=gen_video["id"],
+        cloudinary_url=cloudinary_url,
+    )
+    logger.info(f"[Task {task_id}] Purffle video synthesis completed! Video: {cloudinary_url or video_url}")
+    return True
+
+
+async def _run_video_generation(
+    task_id: str,
+    project_id: str,
+    prompt: str,
+    mode: str,
+    seconds: str,
+    aspect_ratio: str,
+    seed,
+    script_id: str,
+    engine: str = "auto",
+):
+    """Background task: submit to Agnes, poll, or use free video synthesis engine."""
+    settings = get_settings()
+    client = get_agnes_client()
+
+    async def _update_task(**kwargs):
+        await crud.update_video_task(task_id, kwargs)
+
+    # Route: PurffleShorts V3
+    if engine == "purffle":
+        try:
+            await _generate_via_purffle_engine(task_id, project_id, script_id, aspect_ratio, _update_task)
+            return
+        except Exception as e:
+            logger.exception(f"[Task {task_id}] Purffle engine error")
+            await _update_task(status="failed", error_message=str(e), completed_at=_utcnow())
+            return
+
+    # Route: Free Engine
+    if engine == "free":
+        try:
+            await _generate_via_free_engine(task_id, project_id, script_id, _update_task)
+            return
+        except Exception as e:
+            logger.exception(f"[Task {task_id}] Free engine error")
+            await _update_task(status="failed", error_message=str(e), completed_at=_utcnow())
+            return
+
+    try:
+        # Submit to Agnes
+        await _update_task(status="queued")
+        agnes_response = await client.create_video_task(
+            prompt=prompt,
+            mode=mode,
+            seconds=seconds,
+            aspect_ratio=aspect_ratio,
+            seed=seed,
+        )
+        agnes_video_id = agnes_response.get("_polling_video_id")
+        await _update_task(status="in_progress", agnes_video_id=agnes_video_id, progress=5)
+        logger.info(f"[Task {task_id}] Agnes video submitted: agnes_video_id={agnes_video_id}")
+
+        # Poll for completion
+        poll_count = 0
+        max_attempts = settings.VIDEO_POLL_MAX_ATTEMPTS
+        while poll_count < max_attempts:
+            await asyncio.sleep(settings.VIDEO_POLL_INTERVAL_SECONDS)
+            poll_count += 1
+
+            status_data = await client.get_video_status(agnes_video_id)
+            agnes_status = status_data.get("status", "")
+            progress = status_data.get("progress", 0)
+
+            logger.debug(f"[Task {task_id}] Poll #{poll_count}: status={agnes_status} progress={progress}")
+            await _update_task(status="in_progress", progress=min(int(progress), 99))
+
+            if agnes_status == "completed":
+                video_url = status_data.get("url")
+                if not video_url:
+                    raise AgnesAPIError("Agnes returned completed but no URL", status_code=502)
+
+                # Process raw Agnes video: add neural voiceover and synchronized captions
+                script = await crud.get_script(script_id)
+                cloudinary_url, cloudinary_public_id = await sync_audio_and_captions_to_video(
+                    video_url=video_url,
+                    script=script or {},
+                    task_id=task_id,
+                    project_id=project_id,
+                )
+
+                # Save to generated_videos collection
+                gen_video = await crud.create_generated_video({
+                    "project_id": project_id,
+                    "script_id": script_id,
+                    "task_id": task_id,
+                    "cloudinary_url": cloudinary_url,
+                    "cloudinary_public_id": cloudinary_public_id,
+                    "original_url": video_url,
+                    "file_format": "mp4",
+                    "duration_seconds": int(status_data.get("seconds", 0) or 5),
+                })
+
+                await _update_task(
+                    status="completed",
+                    progress=100,
+                    completed_at=_utcnow(),
+                    generated_video_id=gen_video["id"],
+                    cloudinary_url=cloudinary_url,
+                )
+                logger.info(f"[Task {task_id}] Completed! Video: {cloudinary_url}")
+                return
+
+            elif agnes_status == "failed":
+                err_msg = status_data.get("error_message", "Video generation failed")
+                raise AgnesAPIError(f"Video generation failed: {err_msg}", status_code=502)
+
+        # Timed out
+        raise AgnesAPIError("Video generation timed out after maximum wait time", status_code=504)
+
+    except (AgnesAPIError, AgnesQueueFullError) as e:
+        logger.warning(f"[Task {task_id}] Agnes unavailable or rate-limited ({e}). Falling back to Free AI Multi-Scene Video Synthesis Engine.")
+        try:
+            await _generate_via_free_engine(task_id, project_id, script_id, _update_task)
+            return
+        except Exception as fallback_err:
+            logger.exception(f"[Task {task_id}] Fallback generator error: {fallback_err}")
+            await _update_task(
+                status="failed",
+                error_message=f"Generation error: {str(fallback_err)}",
+                completed_at=_utcnow(),
+            )
+    except Exception as e:
+        logger.exception(f"[Task {task_id}] Unexpected error")
+        await _update_task(
+            status="failed",
+            error_message=f"Unexpected error: {str(e)[:200]}",
+            completed_at=_utcnow(),
+        )
 
 
 @router.get("/tasks/{task_id}", response_model=dict)
@@ -65,6 +419,32 @@ async def list_videos():
     """List all generated videos."""
     videos = await crud.list_generated_videos(limit=100)
     return {"data": videos, "total": len(videos)}
+
+
+@router.get("/download")
+async def download_video(url: str, filename: Optional[str] = "qreate_video.mp4"):
+    """Proxy streaming download for video URLs with Content-Disposition attachment header."""
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="Invalid video URL")
+
+    clean_filename = filename if filename.endswith(".mp4") else f"{filename}.mp4"
+
+    async def stream_video():
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            async with client.stream("GET", url) as resp:
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=resp.status_code, detail="Failed to fetch video stream")
+                async for chunk in resp.aiter_bytes(chunk_size=65536):
+                    yield chunk
+
+    return StreamingResponse(
+        stream_video(),
+        media_type="video/mp4",
+        headers={
+            "Content-Disposition": f'attachment; filename="{clean_filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @router.get("/{video_id}", response_model=dict)

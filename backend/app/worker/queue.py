@@ -19,6 +19,9 @@ from app.database.connection import get_db
 logger = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = ("queued", "in_progress")
+# Other engines (PurffleShorts/Agnes) also use the "queued" status for their own
+# background tasks — workers only ever claim jobs tagged with this queue name.
+QUEUE_NAME = "qreate"
 
 
 def _now() -> datetime:
@@ -28,6 +31,7 @@ def _now() -> datetime:
 async def enqueue(data: Dict[str, Any]) -> dict:
     """Create a queued job. `data` needs project_id and either script_id or topic+options."""
     return await crud.create_video_task({
+        "queue": QUEUE_NAME,
         "script_id": None,
         "batch_id": None,
         "status": "queued",
@@ -44,7 +48,7 @@ async def queue_depth() -> int:
     db = get_db()
     if db is None:
         return 0
-    return await db.video_tasks.count_documents({"status": {"$in": list(ACTIVE_STATUSES)}})
+    return await db.video_tasks.count_documents({"queue": QUEUE_NAME, "status": {"$in": list(ACTIVE_STATUSES)}})
 
 
 async def queue_stats() -> Dict[str, int]:
@@ -63,6 +67,7 @@ async def claim(worker_id: str) -> Optional[dict]:
     now = _now()
     doc = await db.video_tasks.find_one_and_update(
         {
+            "queue": QUEUE_NAME,
             "$or": [
                 {"status": "queued"},
                 # Abandoned by a crashed/restarted worker
@@ -106,7 +111,7 @@ async def fail_exhausted() -> int:
         return 0
     s = get_settings()
     res = await db.video_tasks.update_many(
-        {"status": "in_progress", "lease_until": {"$lt": _now()}, "attempts": {"$gte": s.JOB_MAX_ATTEMPTS}},
+        {"queue": QUEUE_NAME, "status": "in_progress", "lease_until": {"$lt": _now()}, "attempts": {"$gte": s.JOB_MAX_ATTEMPTS}},
         {"$set": {"status": "failed", "stage": "failed", "error_message": "Worker stopped repeatedly while rendering this job", "completed_at": _now()}},
     )
     return res.modified_count

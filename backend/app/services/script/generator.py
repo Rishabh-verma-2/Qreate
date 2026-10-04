@@ -298,3 +298,31 @@ def script_fields_for_db(script: Dict[str, Any]) -> Dict[str, Any]:
         "llm_provider": script.get("_llm_provider"),
         "research": script.get("research") or {},
     }
+
+
+# ── Used by the Agnes video engine (single text prompt from a structured script) ──
+
+def script_to_video_prompt(script: Dict[str, Any]) -> str:
+    """Flatten a structured script into a single video prompt for Agnes video API."""
+    parts = []
+    hook = script.get("hook", "")
+    if hook:
+        parts.append(hook)
+
+    scenes: List[Dict] = script.get("scenes", [])
+    for scene in scenes:
+        visual = scene.get("visual_description", "").strip()
+        narration = scene.get("narration", "").strip()
+        if visual:
+            parts.append(visual)
+        elif narration:
+            parts.append(narration)
+
+    closing = script.get("closing", "")
+    if closing:
+        parts.append(closing)
+
+    prompt = " ".join(parts)
+    if len(prompt) > 800:
+        prompt = prompt[:797] + "..."
+    return prompt

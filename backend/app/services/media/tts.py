@@ -71,13 +71,14 @@ class Narration:
 def pick_voice(language: str, tone: str, gender: str = "male") -> str:
     lang = (language or "english").strip().lower()
     gender = "female" if (gender or "").lower().startswith("f") else "male"
-    if lang == "english" and gender == "male" and (tone or "").lower() in ("energetic", "entertaining"):
+    tone = (tone or "").split(",")[0].strip().lower()  # multi-tone: first tone sets the voice
+    if lang == "english" and gender == "male" and tone in ("energetic", "entertaining"):
         return ENERGETIC_MALE_EN
     return VOICES.get((lang, gender)) or VOICES.get((lang, "male")) or DEFAULT_VOICE
 
 
 def delivery_for(tone: str) -> Tuple[str, str]:
-    return TONE_DELIVERY.get((tone or "").lower(), ("+6%", "+0Hz"))
+    return TONE_DELIVERY.get((tone or "").split(",")[0].strip().lower(), ("+6%", "+0Hz"))
 
 
 def _locate_words(words: List[Word], text: str) -> List[int]:

@@ -20,6 +20,15 @@ export interface Scene {
   visual_description: string;
   search_queries?: string[];
   camera_notes?: string;
+  visual_type?: string;
+  visual_subject?: string;
+  visual_action?: string;
+  visual_motion?: string;
+  transition?: string;
+  emphasis_words?: string[];
+  pacing?: string;
+  shot_type?: string;
+  concept_key?: string;
 }
 
 export interface PostCopy {
@@ -38,7 +47,7 @@ export interface Script {
   music_mood?: string;
   post?: PostCopy;
   language: string;
-  tone: string;
+  tone: string | string[];
   audience?: string;
   duration_seconds: number;
   original_prompt?: string;
@@ -130,7 +139,7 @@ export interface ScriptGenerateForm {
   title?: string;
   duration_seconds: number;
   language: string;
-  tone: string;
+  tone: string | string[];
   audience: string;
   additional_instructions?: string;
 }
@@ -148,7 +157,41 @@ export interface ContentOptions {
   user_media?: UserMedia[];
   duration_seconds?: number;
   language?: string;
-  tone?: string;
+  tone?: string | string[];
   audience?: string;
   additional_instructions?: string;
+}
+
+// ── Auth types ─────────────────────────────────────────────────────────────────
+
+export interface User {
+  id: string;
+  email: string;
+  name?: string | null;
+  full_name?: string | null;
+  is_active?: boolean;
+  is_verified?: boolean;
+  avatar?: string | null;
+  avatar_url?: string | null;
+  tier?: string;
+  created_at?: string;
+  last_login?: string | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterCredentials {
+  email: string;
+  password: string;
+  name?: string;
+  full_name?: string;
 }

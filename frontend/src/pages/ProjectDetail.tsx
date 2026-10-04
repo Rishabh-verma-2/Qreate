@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileText, Video, Plus, ChevronRight, Loader2, Clock } from 'lucide-react';
+import { FileText, Video, Plus, ChevronRight, Loader2, Clock, Download } from 'lucide-react';
 import { projectsApi } from '../services/api';
 import type { Project } from '../types';
-import VideoCard from '../components/VideoCard';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatusBadge } from '../components/ui/Badge';
 import { formatDate } from '../lib/utils';
+import { downloadVideoFile } from '../lib/download';
 
 export default function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -144,14 +145,41 @@ export default function ProjectDetail() {
                   )}
                 </div>
                 {task.cloudinary_url && (
-                  <a
-                    href={task.cloudinary_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-primary hover:text-primary/80 font-medium shrink-0 ml-3"
-                  >
-                    View
-                  </a>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <a
+                      href={task.cloudinary_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:text-primary/80 font-medium"
+                    >
+                      View
+                    </a>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setDownloadingId(task.id);
+                        try {
+                          await downloadVideoFile(task.cloudinary_url!, `qreate_video_${task.id}.mp4`);
+                        } finally {
+                          setDownloadingId(null);
+                        }
+                      }}
+                      disabled={downloadingId === task.id}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium disabled:opacity-50 cursor-pointer"
+                    >
+                      {downloadingId === task.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Downloading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3 h-3" />
+                          <span>Download</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -163,10 +191,51 @@ export default function ProjectDetail() {
       {videos.length > 0 && (
         <section>
           <h2 className="text-base font-semibold mb-4">Generated Videos ({videos.length})</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {videos.map((video) => (
-              <VideoCard key={video.id} video={video} />
-            ))}
+          <div className="grid sm:grid-cols-2 gap-4">
+            {videos.map((video) => {
+              const url = video.cloudinary_url || video.original_url;
+              return (
+                <Card key={video.id} className="p-0 overflow-hidden">
+                  {url ? (
+                    <video src={url} controls className="w-full max-h-96 object-contain bg-black" />
+                  ) : (
+                    <div className="aspect-video bg-muted flex items-center justify-center">
+                      <Video className="w-8 h-8 text-muted-foreground opacity-30" />
+                    </div>
+                  )}
+                  <div className="p-3 flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">{formatDate(video.created_at)}</p>
+                    {url && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setDownloadingId(video.id);
+                          try {
+                            await downloadVideoFile(url, `qreate_video_${video.id}.mp4`);
+                          } finally {
+                            setDownloadingId(null);
+                          }
+                        }}
+                        disabled={downloadingId === video.id}
+                        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium disabled:opacity-50 cursor-pointer"
+                      >
+                        {downloadingId === video.id ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Downloading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         </section>
       )}

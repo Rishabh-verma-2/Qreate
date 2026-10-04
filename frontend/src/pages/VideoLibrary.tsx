@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Library } from 'lucide-react';
+import { Video, Download, ExternalLink, Loader2, Library } from 'lucide-react';
 import { videosApi } from '../services/api';
 import type { GeneratedVideo } from '../types';
 import { Card } from '../components/ui/Card';
-import VideoCard from '../components/VideoCard';
+import { formatDate } from '../lib/utils';
+import { downloadVideoFile } from '../lib/download';
 
 export default function VideoLibrary() {
   const navigate = useNavigate();
   const [videos, setVideos] = useState<GeneratedVideo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     videosApi.list()
@@ -46,10 +48,79 @@ export default function VideoLibrary() {
           </button>
         </Card>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {videos.map((video) => (
-            <VideoCard key={video.id} video={video} />
-          ))}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {videos.map((video) => {
+            const url = video.cloudinary_url || video.original_url;
+            return (
+              <Card key={video.id} className="overflow-hidden p-0">
+                {/* Video preview */}
+                <div className="aspect-video bg-muted relative">
+                  {url ? (
+                    <video
+                      src={url}
+                      className="w-full h-full object-cover"
+                      preload="metadata"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Video className="w-10 h-10 text-muted-foreground opacity-30" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="p-4 space-y-3">
+                  <div>
+                    <p className="font-medium text-sm">
+                      {video.duration_seconds ? `${video.duration_seconds}s video` : 'Generated video'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {formatDate(video.created_at)}
+                    </p>
+                  </div>
+
+                  {url && (
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        View
+                      </a>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setDownloadingId(video.id);
+                          try {
+                            await downloadVideoFile(url, `qreate_video_${video.id}.mp4`);
+                          } finally {
+                            setDownloadingId(null);
+                          }
+                        }}
+                        disabled={downloadingId === video.id}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-medium disabled:opacity-50 cursor-pointer"
+                      >
+                        {downloadingId === video.id ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Downloading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
