@@ -100,9 +100,15 @@ async def generate_video(body: VideoGenerateRequest, background_tasks: Backgroun
 
 
 
-async def _generate_via_native_engine(task_id: str, project_id: str, script_id: str, update_fn) -> bool:
+async def _generate_via_native_engine(
+    task_id: str,
+    project_id: str,
+    script_id: str,
+    update_fn,
+    aspect_ratio: str = "9:16",
+) -> bool:
     """Render video using the built-in native animated motion graphics engine (Pillow + FFmpeg)."""
-    await update_fn(status="in_progress", progress=20)
+    await update_fn(status="in_progress", progress=15)
     script = await crud.get_script(script_id)
     if not script:
         raise ValueError("Script not found for video generation")
@@ -115,6 +121,7 @@ async def _generate_via_native_engine(task_id: str, project_id: str, script_id: 
         project_id=project_id,
         script=script,
         progress_callback=_progress_cb,
+        aspect_ratio=aspect_ratio,
     )
 
     gen_video = await crud.create_generated_video({
@@ -146,7 +153,20 @@ async def _generate_via_purffle_engine(
     aspect_ratio: str,
     update_fn,
 ) -> bool:
-    """Render video using the PurffleShorts V3 visual storytelling pipeline."""
+    """Render video using the PurffleShorts animated motion graphics pipeline."""
+    aspect = "9:16"
+    if aspect_ratio in ("9:16", "16:9", "1:1", "4:5"):
+        aspect = aspect_ratio
+
+    # If external purffle CLI is not explicitly installed/configured,
+    # render directly via our native Purffle procedural animation engine
+    from app.services.purffle.runner import _find_purffle_python_on_system
+    has_external_cli = bool(os.environ.get("PURFFLE_PYTHON_EXE") or _find_purffle_python_on_system())
+
+    if not has_external_cli:
+        logger.info(f"[Task {task_id}] Using native Purffle animated motion graphics engine.")
+        return await _generate_via_native_engine(task_id, project_id, script_id, update_fn, aspect_ratio=aspect)
+
     await update_fn(status="in_progress", progress=15)
 
     script = await crud.get_script(script_id)
@@ -155,7 +175,7 @@ async def _generate_via_purffle_engine(
 
     await update_fn(progress=25)
 
-    # Visual sourcing: download and format high-res 1080x1920 visuals / animated diagrams
+    # Visual sourcing for external CLI
     scenes = script.get("scenes") or []
     topic = str(script.get("original_prompt") or script.get("title") or "Science explainer")
     media_dir = os.path.join(tempfile.gettempdir(), f"purffle_media_{task_id}")
@@ -180,10 +200,6 @@ async def _generate_via_purffle_engine(
             lambda: asyncio.create_task(update_fn(progress=mapped))
         )
 
-    aspect = "9:16"
-    if aspect_ratio in ("9:16", "16:9", "1:1", "4:5"):
-        aspect = aspect_ratio
-
     result: Optional[PurffleRenderResult] = None
     try:
         result = await asyncio.to_thread(
@@ -197,10 +213,10 @@ async def _generate_via_purffle_engine(
     except Exception as run_err:
         logger.warning(f"[Task {task_id}] Purffle CLI runner: {run_err}. Using native animated engine.")
 
-    # If Purffle CLI is unavailable, fall back to the native motion graphics engine
+    # If Purffle CLI is unavailable or failed, fall back to the native motion graphics engine
     if not result or not result.ok or not result.mp4_path:
-        logger.info(f"[Task {task_id}] purffle_shorts not available — rendering via native animated engine.")
-        return await _generate_via_native_engine(task_id, project_id, script_id, update_fn)
+        logger.info(f"[Task {task_id}] purffle_shorts CLI not available — rendering via native animated engine.")
+        return await _generate_via_native_engine(task_id, project_id, script_id, update_fn, aspect_ratio=aspect)
 
     await update_fn(progress=90)
     validation = validate_purffle_mp4(result.mp4_path, expected_aspect=aspect)

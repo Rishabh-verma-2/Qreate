@@ -2258,14 +2258,8 @@ def validate_visual_semantic_fit(concept_key: str, scene: Dict[str, Any]) -> str
     return concept_key
 
 
-def detect_concept_key(scene: Dict[str, Any], topic: str = "") -> Optional[str]:
+def detect_concept_key(scene: Dict[str, Any], topic: str = "") -> str:
     """Detect visual archetype semantically based on scene meaning."""
-    v_type = (scene.get("visual_type") or "").strip().lower()
-
-    # Photographic types should NOT use procedural motion graphics
-    if v_type in ("cinematic_photo", "establishing_shot"):
-        return None
-
     # 1. Explicit concept_key in scene metadata
     ck = (scene.get("concept_key") or "").strip().lower()
     if ck and ck in CONCEPT_RENDERERS:

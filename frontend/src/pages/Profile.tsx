@@ -35,9 +35,7 @@ export default function Profile() {
   const [defaultAspect, setDefaultAspect] = useState<'9:16' | '16:9'>(() => {
     return (localStorage.getItem('qreate_pref_aspect') as '9:16' | '16:9') || '9:16';
   });
-  const [defaultEngine, setDefaultEngine] = useState<string>(() => {
-    return localStorage.getItem('qreate_pref_engine') || 'purffle';
-  });
+  const defaultEngine = 'purffle';
   const [prefSaved, setPrefSaved] = useState(false);
 
   const handleCopyId = () => {
@@ -239,41 +237,16 @@ export default function Profile() {
             <label className="text-xs font-semibold text-foreground block">
               Default Video Generator
             </label>
-            <div className="space-y-2">
-              {[
-                {
-                  id: 'purffle',
-                  name: 'PurffleShorts V3 (9:16 Motion Graphics)',
-                  desc: 'Procedural scientific diagrams, NASA visuals, word-by-word synced captions',
-                },
-                {
-                  id: 'free',
-                  name: '100% Free Engine (Neural Audio & Scene Images)',
-                  desc: 'Edge-TTS high-fidelity speech with automated visual assembly',
-                },
-                {
-                  id: 'auto',
-                  name: 'Auto Engine (Hybrid Agnes GPU & Local Fallback)',
-                  desc: 'Prioritizes remote Agnes GPU with immediate fallback to local speech',
-                },
-              ].map((eng) => (
-                <button
-                  key={eng.id}
-                  type="button"
-                  onClick={() => setDefaultEngine(eng.id)}
-                  className={`w-full p-3 rounded-xl border text-left text-xs transition-all ${
-                    defaultEngine === eng.id
-                      ? 'border-primary bg-primary/10 text-foreground shadow-xs'
-                      : 'border-border bg-card hover:bg-muted/40 text-muted-foreground'
-                  }`}
-                >
-                  <div className="font-semibold flex items-center justify-between">
-                    <span>{eng.name}</span>
-                    {defaultEngine === eng.id && <CheckCircle2 className="w-3.5 h-3.5 text-primary" />}
-                  </div>
-                  <div className="text-[11px] opacity-75 mt-0.5">{eng.desc}</div>
-                </button>
-              ))}
+            <div className="p-3.5 rounded-xl border border-primary/40 bg-primary/10 text-xs">
+              <div className="font-semibold flex items-center justify-between text-foreground">
+                <span className="flex items-center gap-1.5">
+                  🎬 PurffleShorts V3 (Procedural Motion Graphics)
+                </span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-1">
+                Dynamic animated explainer diagrams, word-by-word synced subtitles, and professional voiceover — 100% animated.
+              </div>
             </div>
           </div>
 
