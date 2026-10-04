@@ -26,6 +26,10 @@ def _doc_to_dict(doc: dict) -> dict:
         elif isinstance(value, ObjectId):
             result[key] = str(value)
         elif isinstance(value, datetime):
+            # MongoDB returns naive datetimes that are UTC — label them so browsers
+            # don't read them as local time (was off by +5:30 in India)
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
             result[key] = value.isoformat()
         elif isinstance(value, dict):
             result[key] = _doc_to_dict(value)

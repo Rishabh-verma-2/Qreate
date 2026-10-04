@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = ("queued", "in_progress")
 # Other engines (PurffleShorts/Agnes) also use the "queued" status for their own
-# background tasks — workers only ever claim jobs tagged with this queue name.
-QUEUE_NAME = "qreate"
+# background tasks — workers only ever claim jobs tagged with this queue name (JOB_QUEUE).
+QUEUE_NAME = get_settings().JOB_QUEUE
 
 
 def _now() -> datetime:

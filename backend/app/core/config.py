@@ -90,6 +90,9 @@ class Settings(BaseSettings):
 
     # ── Job queue / workers ────────────────────────────────────────────────
     EMBEDDED_WORKER: bool = True      # run workers inside the API process
+    # Workers only claim jobs from this queue. Give each developer their own value when
+    # several machines share one MongoDB, so nobody's laptop picks up someone else's jobs.
+    JOB_QUEUE: str = "qreate"
     WORKER_CONCURRENCY: int = 1       # videos rendered at once per process
     JOB_LEASE_SECONDS: int = 180
     JOB_MAX_ATTEMPTS: int = 2

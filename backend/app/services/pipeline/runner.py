@@ -81,6 +81,19 @@ def _scene_durations(starts: List[float], audio_duration: float) -> List[float]:
     return [max(e - s, MIN_SCENE) for s, e in zip(starts, ends)]
 
 
+def _counted(coros, on_done):
+    """Wrap coroutines so `on_done(n_finished, total)` is awaited as each one completes."""
+    total, finished = len(coros), {"n": 0}
+
+    async def wrap(c):
+        result = await c
+        finished["n"] += 1
+        await on_done(finished["n"], total)
+        return result
+
+    return [wrap(c) for c in coros]
+
+
 async def _gather_limited(coros, limit: int):
     sem = asyncio.Semaphore(limit)
 
@@ -174,7 +187,10 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
                 per_scene.append([own_assets[(k + j) % len(own_assets)] for j in range(n)])
                 k += n
         else:
-            per_scene = await _gather_limited(
+            async def footage_progress(done: int, total: int):
+                await report(35 + int(15 * done / total), f"finding footage {done}/{total}")
+
+            per_scene = await _gather_limited(_counted(
                 [
                     find_scene_media(
                         _queries_for(scenes[i] if i < len(scenes) else {}),
@@ -185,7 +201,7 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
                         max_assets=shot_counts[i],
                     )
                     for i in range(len(lines))
-                ],
+                ], footage_progress),
                 limit=3,
             )
         beats = await detect_beats(music_path) if music_path else []
@@ -200,12 +216,15 @@ async def produce_video(script: Dict[str, Any], job_id: str, project_id: str, re
                 assets_i, n = [_card(scenes, i, all_images[0] if all_images else None, work, theme)], 1
             for j, length in enumerate(_split(narration.scene_starts[i], durations[i], n, beats)):
                 plan.append((assets_i[j % len(assets_i)], length, j // len(assets_i)))
-        shot_paths = await render_scenes_parallel(
+        async def shot_progress(done: int, total: int):
+            await report(50 + int(25 * done / total), f"editing shots {done}/{total}")
+
+        shot_paths = await render_scenes_parallel(_counted(
             [
                 render_scene(asset, length, os.path.join(work, f"shot_{k}.mp4"), k, work, variant=variant,
                              grade=theme.grade)
                 for k, (asset, length, variant) in enumerate(plan)
-            ],
+            ], shot_progress),
             limit=s.SCENE_RENDER_PARALLELISM,
         )
         timings["scenes"] = time.monotonic() - t0
