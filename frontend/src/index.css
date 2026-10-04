@@ -1,53 +1,35 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* Qreate design system — flat, light, one accent. Values are HSL channels for Tailwind. */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --background: 0 0% 100%;          /* #FFFFFF page */
+    --foreground: 240 6% 10%;         /* #18181B text */
+    --card: 0 0% 98%;                 /* #FAFAFA surface: sidebar, cards */
+    --card-foreground: 240 6% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 262 83% 58%;
+    --popover-foreground: 240 6% 10%;
+    --primary: 263 69% 42%;           /* #5B21B6 accent — buttons, selected, links only */
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 262 83% 58%;
-    --radius: 0.75rem;
-  }
-
-  .dark {
-    --background: 224 71% 4%;
-    --foreground: 0 0% 98%;
-    --card: 224 71% 6%;
-    --card-foreground: 0 0% 98%;
-    --popover: 224 71% 6%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 262 83% 62%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 215 28% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 215 28% 12%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 215 28% 12%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 215 28% 16%;
-    --input: 215 28% 16%;
-    --ring: 262 83% 62%;
+    --primary-soft: 252 100% 97%;     /* #F3F0FF selected background */
+    --secondary: 240 5% 96%;          /* #F4F4F5 */
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;   /* #71717A hints, labels */
+    --accent: 240 5% 96%;             /* neutral hover background */
+    --accent-foreground: 240 6% 10%;
+    --destructive: 0 72% 51%;         /* #DC2626 */
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 36%;           /* #16A34A */
+    --warning: 32 95% 44%;            /* #D97706 */
+    --border: 240 6% 90%;             /* #E4E4E7 */
+    --input: 240 6% 90%;
+    --ring: 263 69% 42%;
+    --radius: 0.5rem;                 /* 8px everywhere */
   }
 
   * {
@@ -55,37 +37,48 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/20 selection:text-primary;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: "cv11", "ss01";
   }
 
-  html {
-    scroll-behavior: smooth;
+  ::selection {
+    background: hsl(var(--primary-soft));
+    color: hsl(var(--primary));
+  }
+
+  /* Visible keyboard focus everywhere (mouse clicks don't show it) */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
 @layer components {
+  /* Kept for old markup: now flat accent, no gradient */
   .qreate-gradient {
-    background: linear-gradient(135deg, hsl(262 83% 58%) 0%, hsl(290 70% 50%) 50%, hsl(220 80% 60%) 100%);
+    background: hsl(var(--primary));
   }
 
   .qreate-gradient-text {
-    background: linear-gradient(135deg, hsl(262 83% 65%) 0%, hsl(290 70% 60%) 50%, hsl(220 80% 65%) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: hsl(var(--primary));
   }
 
   .card-hover {
-    @apply transition-all duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5;
+    @apply transition-colors duration-150 hover:border-primary/40;
   }
 
-  .status-pending { @apply text-yellow-400 bg-yellow-400/10; }
-  .status-queued { @apply text-blue-400 bg-blue-400/10; }
-  .status-in_progress { @apply text-blue-400 bg-blue-400/10; }
-  .status-completed { @apply text-green-400 bg-green-400/10; }
-  .status-failed { @apply text-red-400 bg-red-400/10; }
-  .status-active { @apply text-green-400 bg-green-400/10; }
+  .status-pending { color: hsl(var(--warning)); background: hsl(var(--warning) / 0.1); }
+  .status-queued { color: hsl(var(--warning)); background: hsl(var(--warning) / 0.1); }
+  .status-in_progress { color: hsl(var(--warning)); background: hsl(var(--warning) / 0.1); }
+  .status-completed { color: hsl(var(--success)); background: hsl(var(--success) / 0.1); }
+  .status-failed { color: hsl(var(--destructive)); background: hsl(var(--destructive) / 0.1); }
+  .status-active { color: hsl(var(--success)); background: hsl(var(--success) / 0.1); }
+
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-muted;
+  }
 }
 
 /* Scrollbar */

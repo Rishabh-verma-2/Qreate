@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AppLayout from './layouts/AppLayout';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
@@ -10,6 +10,8 @@ import GenerateVideo from './pages/GenerateVideo';
 import VideoLibrary from './pages/VideoLibrary';
 import Profile from './pages/Profile';
 import BatchStudio, { BatchDetail } from './pages/BatchStudio';
+import NotFound from './pages/NotFound';
+import { ToastProvider } from './components/ui/Toast';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
@@ -19,6 +21,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ToastProvider>
         <BrowserRouter>
           <AuthModal />
           <Routes>
@@ -42,7 +45,7 @@ function App() {
                       <Route path="profile" element={<Profile />} />
                       <Route path="batch" element={<BatchStudio />} />
                       <Route path="batch/:batchId" element={<BatchDetail />} />
-                      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="*" element={<NotFound />} />
                     </Routes>
                   </AppLayout>
                 </ProtectedRoute>
@@ -50,6 +53,7 @@ function App() {
             />
           </Routes>
         </BrowserRouter>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );

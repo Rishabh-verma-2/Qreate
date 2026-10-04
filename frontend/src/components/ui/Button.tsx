@@ -17,25 +17,25 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:pointer-events-none select-none';
+    'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed select-none';
 
   const variants = {
     primary:
-      'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-sm',
+      'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80',
     secondary:
       'bg-secondary text-secondary-foreground hover:bg-secondary/80 active:bg-secondary/70',
     outline:
-      'border border-border bg-transparent hover:bg-accent hover:text-accent-foreground active:bg-accent/70',
+      'border border-border bg-background hover:bg-accent hover:text-accent-foreground active:bg-accent/70',
     ghost:
       'bg-transparent hover:bg-accent hover:text-accent-foreground active:bg-accent/70',
     destructive:
-      'bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80 shadow-sm',
+      'bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80',
   };
 
   const sizes = {
-    sm: 'h-8 px-3 text-sm',
+    sm: 'h-8 px-3 text-[13px]',
     md: 'h-10 px-4 text-sm',
-    lg: 'h-11 px-6 text-base',
+    lg: 'h-11 px-5 text-sm',
   };
 
   return (
