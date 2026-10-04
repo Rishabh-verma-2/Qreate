@@ -202,7 +202,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
           <h2 className="text-sm font-medium">{title}</h2>
         </header>
-        <div className="flex-1 overflow-y-auto">{children}</div>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </main>
     </div>
   );

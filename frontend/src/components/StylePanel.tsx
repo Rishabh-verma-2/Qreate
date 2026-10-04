@@ -1,4 +1,12 @@
+import {
+  BookOpen, Clapperboard, Flame, Lightbulb, ListOrdered, Newspaper, Eye, Sparkles, Smartphone, type LucideIcon,
+} from 'lucide-react';
 import { cn } from '../lib/utils';
+
+const FORMAT_ICONS: Record<string, LucideIcon> = {
+  auto: Sparkles, ugc: Smartphone, storytelling: BookOpen, explainer: Lightbulb, listicle: ListOrdered,
+  cinematic: Clapperboard, news: Newspaper, motivational: Flame, pov: Eye,
+};
 import {
   CAPTION_STYLES, FORMATS, MUSIC_MOODS, PACES, THEMES, VISUAL_STYLES, type StyleChoices,
 } from '../lib/styleOptions';
@@ -29,8 +37,8 @@ function Chip({ active, onClick, children, className }: {
       type="button"
       onClick={onClick}
       className={cn(
-        'text-left rounded-xl border p-3 transition-colors',
-        active ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40',
+        'text-left rounded-lg border p-3 transition-colors',
+        active ? 'border-primary bg-primary-soft' : 'border-border bg-background hover:border-primary/40',
         className
       )}
     >
@@ -49,12 +57,18 @@ export default function StylePanel({ value, onChange }: StylePanelProps) {
     <div className="space-y-6">
       <Section title="What type of video?" hint="The writer, footage and edit all follow this format.">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {FORMATS.map((f) => (
+          {FORMATS.map((f) => {
+            const Icon = FORMAT_ICONS[f.value] || Sparkles;
+            return (
             <Chip key={f.value} active={value.video_format === f.value} onClick={() => set('video_format', f.value)}>
-              <p className="text-sm font-medium">{f.emoji} {f.label}</p>
+              <p className="text-sm font-medium flex items-center gap-2">
+                <Icon className={cn('w-4 h-4', value.video_format === f.value ? 'text-primary' : 'text-muted-foreground')} />
+                {f.label}
+              </p>
               <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{f.desc}</p>
             </Chip>
-          ))}
+            );
+          })}
         </div>
       </Section>
 
@@ -88,20 +102,20 @@ export default function StylePanel({ value, onChange }: StylePanelProps) {
               type="button"
               onClick={() => onChange({ ...value, color_theme: t.value, accent_color: undefined })}
               className={cn(
-                'flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border transition-colors',
-                value.color_theme === t.value && !value.accent_color ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'
+                'flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-lg border transition-colors',
+                value.color_theme === t.value && !value.accent_color ? 'border-primary bg-primary-soft' : 'border-border bg-background hover:border-primary/40'
               )}
             >
               <span
-                className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center"
-                style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
+                className="w-6 h-6 rounded-md border border-black/10 flex items-center justify-center"
+                style={{ background: t.to }}
               >
                 <span className="w-2.5 h-2.5 rounded-full" style={{ background: t.highlight }} />
               </span>
               <span className="text-xs font-medium">{t.label}</span>
             </button>
           ))}
-          <label className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border border-border cursor-pointer hover:border-primary/40">
+          <label className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-lg border border-border bg-background cursor-pointer hover:border-primary/40">
             <input
               type="color"
               value={value.accent_color || theme.highlight}
@@ -124,7 +138,7 @@ export default function StylePanel({ value, onChange }: StylePanelProps) {
             >
               <div
                 className="h-16 flex items-center justify-center"
-                style={{ background: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }}
+                style={{ background: '#27272A' }}
               >
                 <span
                   className={cn(
