@@ -18,6 +18,7 @@ export interface Scene {
   duration_seconds: number;
   narration: string;
   visual_description: string;
+  search_queries?: string[];
   camera_notes?: string;
   visual_type?: string;
   visual_subject?: string;
@@ -30,13 +31,21 @@ export interface Scene {
   concept_key?: string;
 }
 
+export interface PostCopy {
+  caption?: string;
+  hashtags?: string[];
+}
+
 export interface Script {
   id: string;
   project_id: string;
   title: string;
   hook?: string;
+  hook_text?: string;
   closing?: string;
   scenes: Scene[];
+  music_mood?: string;
+  post?: PostCopy;
   language: string;
   tone: string | string[];
   audience?: string;
@@ -54,10 +63,15 @@ export type VideoTaskStatus = 'pending' | 'queued' | 'in_progress' | 'completed'
 export interface VideoTask {
   id: string;
   project_id: string;
-  script_id: string;
-  agnes_video_id?: string;
+  script_id?: string;
+  batch_id?: string;
+  topic?: string;
+  title?: string;
   status: VideoTaskStatus;
+  stage?: string;
   progress: number;
+  attempts?: number;
+  thumbnail_url?: string;
   error_message?: string;
   cloudinary_url?: string;
   generated_video_id?: string;
@@ -84,7 +98,38 @@ export interface GeneratedVideo {
   thumbnail_url?: string;
   duration_seconds?: number;
   file_format: string;
+  title?: string;
+  hook?: string;
+  post?: PostCopy;
+  credits?: string[];
+  media_sources?: string[];
+  inspiration?: Inspiration;
+  timings?: Record<string, number>;
   created_at: string;
+}
+
+export interface Inspiration {
+  niche?: string;
+  emotion?: string;
+  searches?: string[];
+  news?: { title: string; source: string; date: string; url: string }[];
+  top_shorts?: { title: string; views: number; url: string; channel?: string }[];
+}
+
+export interface BatchItem {
+  task: VideoTask;
+  video?: GeneratedVideo | null;
+}
+
+export interface Batch {
+  id: string;
+  name: string;
+  topics: string[];
+  task_ids: string[];
+  options: Record<string, unknown>;
+  created_at: string;
+  items?: BatchItem[];
+  summary?: { total: number; done: number; counts: Record<string, number> };
 }
 
 // ── Form types ─────────────────────────────────────────────────────────────────
@@ -99,11 +144,31 @@ export interface ScriptGenerateForm {
   additional_instructions?: string;
 }
 
-export interface VideoGenerateForm {
-  mode: 'text';
-  duration_seconds: number;
-  aspect_ratio: string;
-  seed?: number;
+export interface UserMedia {
+  url: string;
+  kind: 'image' | 'video';
+  duration?: number;
+  name?: string;
+}
+
+export interface ContentOptions {
+  title?: string;
+  voice_gender?: 'male' | 'female';
+  user_media?: UserMedia[];
+  duration_seconds?: number;
+  language?: string;
+  tone?: string | string[];
+  video_format?: string;
+  visual_style?: string;
+  color_theme?: string;
+  accent_color?: string;
+  caption_style?: string;
+  voice_id?: string;
+  pace?: string;
+  music_mood?: string;
+  people_focus?: boolean;
+  audience?: string;
+  additional_instructions?: string;
 }
 
 // ── Auth types ─────────────────────────────────────────────────────────────────

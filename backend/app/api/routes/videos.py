@@ -20,7 +20,8 @@ from app.services.purffle import (
     source_visuals_for_scenes,
     validate_purffle_mp4,
 )
-from app.services.video_engine import generate_free_video
+from app.services.video_engine import generate_free_video, sync_audio_and_captions_to_video
+from app.worker import queue
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
 logger = logging.getLogger(__name__)
@@ -28,6 +29,17 @@ logger = logging.getLogger(__name__)
 
 def _utcnow():
     return datetime.now(timezone.utc)
+
+
+async def ensure_capacity(new_jobs: int = 1) -> None:
+    """Back-pressure for the queued pipeline: refuse work when the queue is deep (HTTP 429)."""
+    depth = await queue.queue_depth()
+    limit = get_settings().MAX_QUEUE_DEPTH
+    if depth + new_jobs > limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Render queue is full ({depth} jobs waiting). Please try again in a few minutes.",
+        )
 
 
 @router.post("/generate", response_model=dict, status_code=202)
@@ -58,7 +70,20 @@ async def generate_video(body: VideoGenerateRequest, background_tasks: Backgroun
                 "message": "A video task for this script is already in progress",
             }
 
-    # Build video prompt from script
+    # Qreate reel pipeline: queued, rendered by the worker pool (scales across processes)
+    if body.engine == "qreate":
+        if not script.get("scenes"):
+            raise HTTPException(status_code=422, detail="Script has no scenes to render")
+        await ensure_capacity()
+        task = await queue.enqueue({
+            "project_id": body.project_id,
+            "script_id": body.script_id,
+            "generation_settings": {"aspect_ratio": "9:16", "resolution": "1080x1920", "engine": "qreate"},
+        })
+        logger.info(f"Qreate pipeline job queued: {task['id']}")
+        return {"data": task, "message": "Video generation queued"}
+
+    # Build video prompt from script (PurffleShorts / free / Agnes engines)
     prompt = script_to_video_prompt(script)
     if not prompt:
         raise HTTPException(status_code=422, detail="Script has no content to generate video from")

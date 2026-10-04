@@ -9,6 +9,7 @@ import ScriptEditor from './pages/ScriptEditor';
 import GenerateVideo from './pages/GenerateVideo';
 import VideoLibrary from './pages/VideoLibrary';
 import Profile from './pages/Profile';
+import BatchStudio, { BatchDetail } from './pages/BatchStudio';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
@@ -39,6 +40,8 @@ function App() {
                       <Route path="generate-video/:scriptId" element={<GenerateVideo />} />
                       <Route path="library" element={<VideoLibrary />} />
                       <Route path="profile" element={<Profile />} />
+                      <Route path="batch" element={<BatchStudio />} />
+                      <Route path="batch/:batchId" element={<BatchDetail />} />
                       <Route path="*" element={<Navigate to="/dashboard" replace />} />
                     </Routes>
                   </AppLayout>

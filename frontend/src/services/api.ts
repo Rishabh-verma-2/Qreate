@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { ContentOptions, UserMedia } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -68,7 +69,7 @@ export const projectsApi = {
 
 // ── Scripts ───────────────────────────────────────────────────────────────────
 export const scriptsApi = {
-  generate: (data: {
+  generate: (data: ContentOptions & {
     project_id: string;
     topic: string;
     title?: string;
@@ -101,6 +102,40 @@ export const videosApi = {
   list: () => api.get('/api/videos').then((r) => r.data.data),
   get: (id: string) => api.get(`/api/videos/${id}`).then((r) => r.data.data),
 };
+
+// ── Pipeline (one-shot + batch) ───────────────────────────────────────────────
+export const pipelineApi = {
+  run: (data: ContentOptions & { topic: string }) =>
+    api.post('/api/pipeline/run', data).then((r) => r.data.data),
+  queueStats: () => api.get('/api/queue/stats').then((r) => r.data.data),
+};
+
+export const batchesApi = {
+  create: (data: { name?: string; topics: string[]; options: ContentOptions }) =>
+    api.post('/api/batches', data).then((r) => r.data.data),
+  list: () => api.get('/api/batches').then((r) => r.data.data),
+  get: (id: string) => api.get(`/api/batches/${id}`).then((r) => r.data.data),
+};
+
+// ── Uploads (creator's own photos/videos) ──────────────────────────────────────
+export const uploadsApi = {
+  upload: (files: File[]): Promise<UserMedia[]> => {
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f));
+    return api
+      .post('/api/uploads', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 })
+      .then((r) => r.data.data);
+  },
+};
+
+// ── Voices (catalog + audio previews) ──────────────────────────────────────────
+export const voicesApi = {
+  list: () => api.get('/api/voices').then((r) => r.data.data),
+};
+
+export const VOICE_PREVIEW_URL = (voiceId: string, language?: string) =>
+  `${BASE_URL}/api/voices/preview?voice_id=${encodeURIComponent(voiceId)}` +
+  (language ? `&language=${encodeURIComponent(language)}` : '');
 
 // ── Health ─────────────────────────────────────────────────────────────────────
 export const healthApi = {

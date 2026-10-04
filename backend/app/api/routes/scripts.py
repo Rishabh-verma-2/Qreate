@@ -5,8 +5,9 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.database import crud
-from app.schemas.schemas import ScriptGenerateRequest, ScriptUpdate
-from app.services.script.generator import generate_script
+from app.schemas.schemas import ScriptGenerateRequest, ScriptUpdate, style_from
+from app.services.research import gather_research
+from app.services.script.generator import generate_script, script_fields_for_db
 
 router = APIRouter(prefix="/api/scripts", tags=["Scripts"])
 logger = logging.getLogger(__name__)
@@ -14,13 +15,15 @@ logger = logging.getLogger(__name__)
 
 @router.post("/generate", response_model=dict, status_code=201)
 async def generate_new_script(body: ScriptGenerateRequest):
-    """Generate a new script using Agnes 2.5 Flash."""
+    """Generate a hook-first short-form script with the LLM provider chain."""
     # Verify project exists
     project = await crud.get_project(body.project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project not found: {body.project_id}")
 
+    research = await gather_research(body.topic, body.language)
     script_data = await generate_script(
+        research=research,
         topic=body.topic,
         duration_seconds=body.duration_seconds,
         language=body.language,
@@ -28,20 +31,24 @@ async def generate_new_script(body: ScriptGenerateRequest):
         audience=body.audience,
         title=body.title,
         additional_instructions=body.additional_instructions,
+        has_user_media=bool(body.user_media),
+        video_format=body.video_format,
+        visual_style=body.visual_style,
+        people_focus=body.people_focus,
     )
 
     saved = await crud.create_script({
         "project_id": body.project_id,
-        "title": script_data.get("title", body.title or body.topic),
-        "hook": script_data.get("hook", ""),
-        "closing": script_data.get("closing", ""),
-        "scenes": script_data.get("scenes", []),
+        **script_fields_for_db(script_data),
         "language": body.language,
         "tone": body.tone,
         "audience": body.audience,
         "duration_seconds": body.duration_seconds,
         "original_prompt": body.topic,
         "additional_instructions": body.additional_instructions,
+        "voice_gender": body.voice_gender,
+        "user_media": [m.model_dump() for m in body.user_media],
+        "style": style_from(body),
         "approved": False,
         "version": 1,
     })
@@ -61,19 +68,17 @@ async def regenerate_script(script_id: str):
 
     script_data = await generate_script(
         topic=existing.get("original_prompt", ""),
-        duration_seconds=existing.get("duration_seconds", 60),
+        duration_seconds=existing.get("duration_seconds", 30),
         language=existing.get("language", "English"),
         tone=existing.get("tone", "professional"),
         audience=existing.get("audience", "general"),
         title=existing.get("title"),
         additional_instructions=existing.get("additional_instructions"),
+        has_user_media=bool(existing.get("user_media")),
     )
 
     updated = await crud.update_script(script_id, {
-        "title": script_data.get("title", existing.get("title")),
-        "hook": script_data.get("hook", ""),
-        "closing": script_data.get("closing", ""),
-        "scenes": script_data.get("scenes", []),
+        **script_fields_for_db(script_data),
         "approved": False,
         "version": (existing.get("version", 1) or 1) + 1,
     })

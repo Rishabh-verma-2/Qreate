@@ -27,8 +27,10 @@ const ASPECT_RATIO_OPTIONS = [
   { value: '3:4', label: '3:4 (720×960)' },
 ];
 
-// Engine is locked to Purffle V3 — the only professional animated video engine
-const PURFFLE_ENGINE = 'purffle';
+const ENGINE_OPTIONS = [
+  { value: 'purffle', label: '🎬 PurffleShorts V3 (Animated Motion Graphics — 100% Procedural Diagrams & Physics)' },
+  { value: 'qreate', label: '📱 Qreate Reel Engine (Real Stock Footage — CLIP Vision, Whooshes, Beat Cuts)' },
+];
 
 const POLL_INTERVAL = 4000; // ms
 
@@ -46,8 +48,9 @@ export default function GenerateVideo() {
     const stateAspect = (location.state as { aspectRatio?: string })?.aspectRatio;
     return stateAspect || localStorage.getItem('qreate_pref_aspect') || '9:16';
   });
-  // Engine is locked to Purffle V3 — professional animated video engine
-  const engine = PURFFLE_ENGINE;
+  const [engine, setEngine] = useState(() => {
+    return localStorage.getItem('qreate_pref_engine') || 'purffle';
+  });
   const [error, setError] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -209,20 +212,22 @@ export default function GenerateVideo() {
           </div>
 
           {/* Engine locked to Purffle V3 */}
+          {/* Generation Engine Selector */}
           <div className="mt-4 space-y-1.5">
             <label className="block text-sm font-medium text-foreground">Generation Engine</label>
-            <div className="h-11 px-4 rounded-xl border border-purple-500/40 bg-purple-500/5 flex items-center justify-between">
-              <span className="flex items-center gap-2 text-sm font-semibold text-purple-300">
-                🎬 PurffleShorts V3 — Professional Animated Video
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 uppercase tracking-wider">
-                Active
-              </span>
-            </div>
+            <Select
+              value={engine}
+              onChange={(e) => setEngine(e.target.value)}
+              options={ENGINE_OPTIONS}
+            />
           </div>
 
-          <div className="mt-3 p-3.5 rounded-xl bg-purple-500/5 text-sm text-muted-foreground border border-purple-500/15">
-            <span>🎬 <strong className="text-purple-400">PurffleShorts V3:</strong> Creates high-impact professional animated videos with authentic NASA/Wikimedia imagery, procedural motion graphics, cinematic colour grading, and bold synchronised captions — rendered 100% locally.</span>
+          <div className="mt-4 p-3.5 rounded-xl bg-muted/50 text-sm text-muted-foreground border border-border/60">
+            {engine === 'qreate' ? (
+              <span>📱 <strong className="text-yellow-400">Qreate Reel Engine:</strong> Real stock footage picked by CLIP vision, ~2s jump cuts with punch-ins, beat-synced cuts, whooshes, word-by-word captions and ducked music. Queued and rendered by scalable workers.</span>
+            ) : (
+              <span>🎬 <strong className="text-purple-400">PurffleShorts V3:</strong> High-impact procedural animated explainer diagrams, physics simulations, dynamic data charts, and bold synchronised captions — rendered 100% locally with zero slideshows.</span>
+            )}
           </div>
         </Card>
       )}

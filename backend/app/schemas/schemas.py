@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Projects ─────────────────────────────────────────────────────────────────
@@ -27,9 +27,11 @@ class ProjectResponse(BaseModel):
 
 class SceneSchema(BaseModel):
     scene_number: int
-    duration_seconds: int = 5
+    duration_seconds: int = 4
     narration: str = ""
     visual_description: str = ""
+    on_screen_text: str = ""
+    search_queries: List[str] = []
     camera_notes: str = ""
     visual_type: Optional[str] = None
     visual_subject: Optional[str] = None
@@ -42,20 +44,72 @@ class SceneSchema(BaseModel):
     concept_key: Optional[str] = None
 
 
-class ScriptGenerateRequest(BaseModel):
-    project_id: str
-    topic: str = Field(..., min_length=1, max_length=10000)
+class UserMedia(BaseModel):
+    url: str = Field(..., max_length=1000)
+    kind: str = Field("image", pattern="^(image|video)$")
+    duration: Optional[float] = None
+
+
+class ContentOptions(BaseModel):
+    """Creative options shared by single, one-shot and batch generation."""
     title: Optional[str] = Field(None, max_length=200)
-    duration_seconds: int = Field(60, ge=10, le=600)
+    voice_gender: str = Field("male", pattern="^(male|female)$")
+    user_media: List[UserMedia] = Field(default_factory=list, max_length=30)
+    # ── Creator style choices ──
+    video_format: str = Field("auto", pattern="^(auto|ugc|storytelling|explainer|listicle|cinematic|news|motivational|pov)$")
+    visual_style: str = Field("real", pattern="^(real|animated|mixed)$")
+    color_theme: str = Field("vibrant", pattern="^(vibrant|warm|cool|neon|luxury|minimal|mono)$")
+    accent_color: Optional[str] = Field(None, pattern="^#?[0-9a-fA-F]{6}$")
+    caption_style: str = Field("bold", pattern="^(bold|clean|boxed)$")
+    voice_id: Optional[str] = Field(None, max_length=80)
+    pace: str = Field("fast", pattern="^(fast|normal|calm)$")
+    music_mood: str = Field("auto", pattern="^(auto|none|upbeat|chill|cinematic|inspiring|dramatic|lofi|corporate|emotional)$")
+    people_focus: bool = True
+    duration_seconds: int = Field(30, ge=10, le=600)
     language: str = Field("English", max_length=50)
-    tone: Union[str, List[str]] = Field("professional")
+    # The studio UI can send several tones ("multi-tone storytelling"); stored as "a, b"
+    tone: Union[str, List[str]] = Field("energetic")
+
+    @field_validator("tone", mode="before")
+    @classmethod
+    def _join_tones(cls, v):
+        if isinstance(v, list):
+            return ", ".join(str(t).strip() for t in v if str(t).strip()) or "energetic"
+        return v
     audience: str = Field("general", max_length=100)
     additional_instructions: Optional[str] = Field(None, max_length=10000)
+
+
+STYLE_FIELDS = ("video_format", "visual_style", "color_theme", "accent_color", "caption_style",
+                "voice_id", "pace", "music_mood", "people_focus", "voice_gender")
+
+
+def style_from(options) -> Dict[str, Any]:
+    """Creator style choices stored on the script and read by the render pipeline."""
+    data = options if isinstance(options, dict) else options.model_dump()
+    return {k: data.get(k) for k in STYLE_FIELDS if k in data}
+
+
+class ScriptGenerateRequest(ContentOptions):
+    project_id: str
+    topic: str = Field(..., min_length=1, max_length=10000)
+
+
+class PipelineRunRequest(ContentOptions):
+    """One-shot: topic in, publish-ready video out (script written by the worker)."""
+    topic: str = Field(..., min_length=3, max_length=10000)
+
+
+class BatchCreateRequest(BaseModel):
+    name: Optional[str] = Field(None, max_length=200)
+    topics: List[str] = Field(..., min_length=1)
+    options: ContentOptions = ContentOptions()
 
 
 class ScriptUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     hook: Optional[str] = Field(None, max_length=1000)
+    hook_text: Optional[str] = Field(None, max_length=100)
     closing: Optional[str] = Field(None, max_length=1000)
     scenes: Optional[List[SceneSchema]] = None
     approved: Optional[bool] = None
@@ -84,10 +138,11 @@ class VideoGenerateRequest(BaseModel):
     script_id: str
     mode: str = Field("text", pattern="^(text|keyframe|reference)$")
     duration_seconds: int = Field(5, ge=4, le=300)
-    aspect_ratio: str = Field("16:9", pattern="^(21:9|16:9|4:3|1:1|3:4|9:16)$")
+    aspect_ratio: str = Field("9:16", pattern="^(21:9|16:9|4:3|1:1|3:4|9:16)$")
     seed: Optional[int] = None
     use_full_script: bool = True
-    engine: str = Field("auto", pattern="^(auto|free|agnes|purffle)$")
+    # "qreate" = trend-aware reel pipeline (queued, 1080x1920); others = PurffleShorts / legacy engines
+    engine: str = Field("qreate", pattern="^(qreate|auto|free|agnes|purffle)$")
 
 
 

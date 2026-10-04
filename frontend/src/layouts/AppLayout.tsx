@@ -9,6 +9,7 @@ import {
   LogOut,
   LogIn,
   User,
+  Layers,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import ThemeToggle from '../components/common/ThemeToggle';
@@ -68,6 +69,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
               {[
                 { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
                 { to: '/projects', icon: FolderOpen, label: 'Projects' },
+                { to: '/batch', icon: Layers, label: 'Reel Studio', badge: 'Trends' },
                 { to: '/create', icon: Clapperboard, label: 'Create Video', badge: 'AI V3' },
                 { to: '/library', icon: Library, label: 'Video Library' },
               ].map(({ to, icon: Icon, label, badge }) => (
