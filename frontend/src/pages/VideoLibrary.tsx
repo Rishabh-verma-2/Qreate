@@ -1,126 +1,73 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Video, Download, ExternalLink, Loader2, Library } from 'lucide-react';
+import { Library, Plus, Search } from 'lucide-react';
 import { videosApi } from '../services/api';
 import type { GeneratedVideo } from '../types';
-import { Card } from '../components/ui/Card';
-import { formatDate } from '../lib/utils';
-import { downloadVideoFile } from '../lib/download';
+import VideoCard from '../components/VideoCard';
+import { Button } from '../components/ui/Button';
+import { EmptyState, PageHeader, Skeleton } from '../components/ui/States';
 
 export default function VideoLibrary() {
   const navigate = useNavigate();
   const [videos, setVideos] = useState<GeneratedVideo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     videosApi.list()
       .then(setVideos)
-      .catch(console.error)
+      .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false));
   }, []);
 
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? videos.filter((v) => (v.title || '').toLowerCase().includes(q)) : videos;
+  }, [videos, query]);
+
   return (
-    <div className="p-8 max-w-6xl mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Video Library</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          All your generated videos in one place
-        </p>
-      </div>
+    <div className="px-4 py-8 sm:px-8 max-w-6xl mx-auto">
+      <PageHeader
+        title="Library"
+        description={loading ? 'Your rendered videos' : `${videos.length} rendered ${videos.length === 1 ? 'video' : 'videos'}`}
+        actions={<Button onClick={() => navigate('/create')}><Plus className="w-4 h-4" /> Create video</Button>}
+      />
+
+      {!loading && videos.length > 0 && (
+        <div className="relative max-w-sm mb-6">
+          <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by title"
+            aria-label="Search videos"
+            className="w-full h-10 pl-9 pr-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          />
+        </div>
+      )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <Skeleton className="aspect-[9/16] w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          ))}
         </div>
+      ) : error ? (
+        <EmptyState icon={Library} title="Couldn't load your videos" description={error}
+          action={<Button variant="outline" onClick={() => window.location.reload()}>Try again</Button>} />
       ) : videos.length === 0 ? (
-        <Card className="text-center py-20">
-          <Library className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-30" />
-          <p className="text-muted-foreground font-medium">No videos yet</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Create a project and generate your first video
-          </p>
-          <button
-            onClick={() => navigate('/create')}
-            className="mt-4 text-sm text-primary hover:underline font-medium"
-          >
-            Create video →
-          </button>
-        </Card>
+        <EmptyState icon={Library} title="No videos yet" description="Videos you render will appear here."
+          action={<Button onClick={() => navigate('/create')}>Create your first video</Button>} />
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No videos match "{query}".</p>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {videos.map((video) => {
-            const url = video.cloudinary_url || video.original_url;
-            return (
-              <Card key={video.id} className="overflow-hidden p-0">
-                {/* Video preview */}
-                <div className="aspect-video bg-muted relative">
-                  {url ? (
-                    <video
-                      src={url}
-                      className="w-full h-full object-cover"
-                      preload="metadata"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Video className="w-10 h-10 text-muted-foreground opacity-30" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="p-4 space-y-3">
-                  <div>
-                    <p className="font-medium text-sm">
-                      {video.duration_seconds ? `${video.duration_seconds}s video` : 'Generated video'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {formatDate(video.created_at)}
-                    </p>
-                  </div>
-
-                  {url && (
-                    <div className="flex items-center gap-3">
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        View
-                      </a>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setDownloadingId(video.id);
-                          try {
-                            await downloadVideoFile(url, `qreate_video_${video.id}.mp4`);
-                          } finally {
-                            setDownloadingId(null);
-                          }
-                        }}
-                        disabled={downloadingId === video.id}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-medium disabled:opacity-50 cursor-pointer"
-                      >
-                        {downloadingId === video.id ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Downloading...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {shown.map((video) => <VideoCard key={video.id} video={video} />)}
         </div>
       )}
     </div>

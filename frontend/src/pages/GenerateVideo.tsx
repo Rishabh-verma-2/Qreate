@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Check, Copy, Download, FileWarning, Library, Loader2, RotateCcw, Video, XCircle } from 'lucide-react';
-import { scriptsApi, videosApi } from '../services/api';
+import { projectsApi, scriptsApi, videosApi } from '../services/api';
 import type { Script, VideoTask } from '../types';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
@@ -81,8 +81,25 @@ export default function GenerateVideo() {
 
   useEffect(() => {
     if (!scriptId) return;
-    scriptsApi.get(scriptId).then(setScript).catch(() => setScript(null)).finally(() => setLoading(false));
+    (async () => {
+      try {
+        const s: Script = await scriptsApi.get(scriptId);
+        setScript(s);
+        // Resume: show a render already running (or finished) for this script after a refresh
+        const project = await projectsApi.get(s.project_id).catch(() => null);
+        const latest = ((project?.video_tasks || []) as VideoTask[]).find((t) => t.script_id === scriptId);
+        if (latest && latest.status !== 'failed') {
+          setTask(latest);
+          if (latest.status !== 'completed') track(latest.id);
+        }
+      } catch {
+        setScript(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
     return () => { if (poll.current) clearTimeout(poll.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scriptId]);
 
   // Elapsed-time ticker while rendering

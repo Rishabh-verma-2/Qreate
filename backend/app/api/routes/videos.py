@@ -405,6 +405,13 @@ async def _run_video_generation(
         )
 
 
+@router.get("/tasks", response_model=dict)
+async def list_tasks(active: bool = False, limit: int = 20):
+    """Recent render tasks (active=true → only queued/in-progress), newest first."""
+    tasks = await crud.list_recent_tasks(limit=min(max(limit, 1), 100), active_only=active)
+    return {"data": tasks}
+
+
 @router.get("/tasks/{task_id}", response_model=dict)
 async def get_task_status(task_id: str):
     """Get video generation task status."""

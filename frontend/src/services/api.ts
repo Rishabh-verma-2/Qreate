@@ -99,6 +99,8 @@ export const videosApi = {
     seed?: number;
     engine?: string;
   }) => api.post('/api/videos/generate', data).then((r) => r.data.data),
+  listTasks: (active = false) =>
+    api.get('/api/videos/tasks', { params: { active, limit: 10 } }).then((r) => r.data.data),
   getTask: (taskId: string) =>
     api.get(`/api/videos/tasks/${taskId}`).then((r) => r.data.data),
   list: () => api.get('/api/videos').then((r) => r.data.data),

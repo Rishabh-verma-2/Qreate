@@ -184,6 +184,15 @@ async def update_video_task(task_id: str, data: Dict[str, Any]) -> Optional[dict
     return _doc_to_dict(result) if result else None
 
 
+async def list_recent_tasks(limit: int = 20, active_only: bool = False) -> List[dict]:
+    db = get_db()
+    if db is None:
+        return []
+    query = {"status": {"$in": ["pending", "queued", "in_progress"]}} if active_only else {}
+    cursor = db.video_tasks.find(query, {"generation_settings": 0}).sort("created_at", -1).limit(limit)
+    return [_doc_to_dict(doc) async for doc in cursor]
+
+
 async def list_tasks_for_project(project_id: str) -> List[dict]:
     db = get_db()
     if db is None:
