@@ -19,10 +19,19 @@ logger = logging.getLogger(__name__)
 @router.post("/generate", response_model=dict, status_code=201)
 async def generate_new_script(body: ScriptGenerateRequest, request: Request):
     """Generate a hook-first short-form script with the LLM provider chain."""
-    # Verify project exists
-    project = await crud.get_project(body.project_id)
+    # Verify project exists or auto-create standalone project for custom video
+    project_id = getattr(body, "project_id", None)
+    project = None
+    if project_id and project_id not in ("default", "custom", "none", ""):
+        project = await crud.get_project(project_id)
     if not project:
-        raise HTTPException(status_code=404, detail=f"Project not found: {body.project_id}")
+        name = (getattr(body, "topic", None) or "Custom Video")[:60]
+        project = await crud.create_project({
+            "name": name,
+            "topic": body.topic,
+            "description": "Auto-created standalone project for custom video",
+        })
+        body.project_id = project["id"]
 
     owner = await enforce(request, "script")
     research = await gather_research(body.topic, body.language)

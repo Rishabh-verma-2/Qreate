@@ -21,10 +21,10 @@ class Settings(BaseSettings):
     CORS_ORIGIN_REGEX: str = r"https://.*\.vercel\.app"
     ALLOW_LOCALHOST_CORS: bool = True     # set false in production
 
-    # ── Abuse limits ───────────────────────────────────────────────────────
-    RATE_LIMIT_VIDEOS_PER_HOUR: int = 10
-    RATE_LIMIT_SCRIPTS_PER_HOUR: int = 20
-    TOPIC_MAX_CHARS: int = 500
+    # ── Abuse limits (0 = unlimited) ───────────────────────────────────────
+    RATE_LIMIT_VIDEOS_PER_HOUR: int = 0
+    RATE_LIMIT_SCRIPTS_PER_HOUR: int = 0
+    TOPIC_MAX_CHARS: int = 5000
 
     # ── MongoDB ────────────────────────────────────────────────────────────
     MONGODB_URI: str = ""
@@ -68,6 +68,38 @@ class Settings(BaseSettings):
     VIDEO_POLL_MAX_ATTEMPTS: int = 120
     VIDEO_QUEUE_RETRY_MAX_SECONDS: int = 900
 
+    # ── Qwen3 / vLLM (local AI Video Director LLM) ─────────────────────────
+    # Served via: vllm serve Qwen/Qwen3-8B --port 8000 --api-key EMPTY
+    QWEN_BASE_URL: str = "http://localhost:8000/v1"
+    QWEN_MODEL: str = "Qwen/Qwen3-8B"
+    QWEN_API_KEY: str = "EMPTY"
+    QWEN_TIMEOUT_SECONDS: int = 120
+    QWEN_MAX_TOKENS: int = 4096
+
+    # ── Video Engine ────────────────────────────────────────────────────────
+    # "wan"    → Wan2.1 via ComfyUI or direct CLI (requires local GPU)
+    # "native" → existing animated motion graphics engine (no GPU needed)
+    VIDEO_ENGINE: str = "native"
+
+    # ── Wan2.1 ──────────────────────────────────────────────────────────────
+    # WAN_MODE: "i2v" (image-to-video, best quality) | "t2v" (text-to-video)
+    WAN_MODE: str = "t2v"
+    # Absolute path to the local Wan2.1 model directory
+    WAN_MODEL_PATH: str = ""
+    # Resolution: "480P" (14B-480P) | "720P" (14B-720P) | "1.3B" (T2V dev)
+    WAN_MODEL_SIZE: str = "480P"
+    # Max attempts per scene before marking as failed
+    WAN_SCENE_MAX_ATTEMPTS: int = 2
+    WAN_SCENE_TIMEOUT_SECONDS: int = 600
+
+    # ── ComfyUI (preferred Wan2.1 backend) ──────────────────────────────────
+    COMFYUI_BASE_URL: str = "http://localhost:8188"
+    COMFYUI_TIMEOUT_SECONDS: int = 600
+
+    # ── GPU Diagnostics ──────────────────────────────────────────────────────
+    # Warn (but do not crash) if detected VRAM is below this threshold (GB)
+    GPU_MIN_VRAM_GB: float = 8.0
+
     # ── Free stock media (real footage — keeps videos from looking AI-made) ─
     PEXELS_API_KEY: str = ""
     PIXABAY_API_KEY: str = ""
@@ -103,8 +135,8 @@ class Settings(BaseSettings):
     WORKER_CONCURRENCY: int = 1       # videos rendered at once per process
     JOB_LEASE_SECONDS: int = 180
     JOB_MAX_ATTEMPTS: int = 2
-    MAX_QUEUE_DEPTH: int = 200        # reject new jobs above this (HTTP 429)
-    MAX_BATCH_SIZE: int = 25
+    MAX_QUEUE_DEPTH: int = 10000      # generous queue capacity without limits
+    MAX_BATCH_SIZE: int = 100
 
     # ── Authentication & Security ──────────────────────────────────────────
     JWT_SECRET_KEY: str = "qreate-jwt-secret-key-super-secure-token-2026"

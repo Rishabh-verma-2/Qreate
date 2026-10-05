@@ -4,14 +4,14 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-from typing import Optional
+from typing import Any, Dict, Optional, Union
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import httpx
 
 from app.core.config import get_settings
 from app.database import crud
-from app.schemas.schemas import VideoGenerateRequest
+from app.schemas.schemas import VideoGenerateRequest, WanGenerateRequest, SceneRegenerateRequest
 from app.services.cloudinary.uploader import upload_video_file
 from app.services.script.generator import script_to_video_prompt
 from app.services.purffle import (
@@ -45,38 +45,89 @@ async def ensure_capacity(new_jobs: int = 1) -> None:
 
 
 @router.post("/generate", response_model=dict, status_code=202)
-async def generate_video(body: VideoGenerateRequest, background_tasks: BackgroundTasks, request: Request):
+async def generate_video(
+    body: Union[WanGenerateRequest, VideoGenerateRequest],
+    background_tasks: BackgroundTasks,
+    request: Request,
+):
     """Submit a video generation task.
 
-    Returns immediately with a task ID. Poll /api/videos/tasks/{task_id} for status.
-    Prevents duplicate submissions for the same script.
+    Returns immediately with a task ID. Poll /api/videos/tasks/{task_id} or
+    /api/videos/{video_id}/status for status.
     """
-    # Validate project and script
-    project = await crud.get_project(body.project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    # Project handling: if project_id is missing or doesn't exist, create a standalone project for this custom video
+    project_id = getattr(body, "project_id", None)
+    project = None
+    if project_id and project_id not in ("default", "custom", "none", ""):
+        project = await crud.get_project(project_id)
 
-    script = await crud.get_script(body.script_id)
-    if not script:
-        raise HTTPException(status_code=404, detail="Script not found")
+    if not project:
+        title = (getattr(body, "prompt", None) or getattr(body, "topic", None) or "Custom AI Video")[:60]
+        project = await crud.create_project({
+            "name": title,
+            "description": "Standalone custom AI video",
+        })
+        project_id = project["id"]
+        if hasattr(body, "project_id"):
+            body.project_id = project_id
+
+    script = None
+    script_id = getattr(body, "script_id", None)
+    if script_id:
+        script = await crud.get_script(script_id)
+        if not script and getattr(body, "engine", "") != "wan":
+            raise HTTPException(status_code=404, detail="Script not found")
 
     # Prevent duplicate in-progress task for same script
-    existing_tasks = await crud.list_tasks_for_project(body.project_id)
-    for t in existing_tasks:
-        if (
-            t.get("script_id") == body.script_id
-            and t.get("status") in ("pending", "queued", "in_progress")
-        ):
-            return {
-                "data": t,
-                "message": "A video task for this script is already in progress",
-            }
+    if script_id:
+        existing_tasks = await crud.list_tasks_for_project(project_id)
+        for t in existing_tasks:
+            if (
+                t.get("script_id") == script_id
+                and t.get("status") in ("pending", "queued", "in_progress")
+            ):
+                return {
+                    "data": t,
+                    "message": "A video task for this script is already in progress",
+                }
 
-    owner = await enforce(request, "video")
+    # For Wan AI Director, bypass rate limiting; otherwise enforce configured limit
+    if getattr(body, "engine", "") == "wan":
+        owner = "local:ai_director"
+    else:
+        owner = await enforce(request, "video")
+
+    # AI Video Director (Wan2.1 / ComfyUI / Native fallback)
+    if getattr(body, "engine", "") == "wan":
+        await ensure_capacity()
+        prompt_val = getattr(body, "prompt", None)
+        if not prompt_val and script:
+            prompt_val = script_to_video_prompt(script)
+        if not prompt_val:
+            prompt_val = "Cinematic scene"
+
+        duration_val = getattr(body, "duration", None) or getattr(body, "duration_seconds", 30)
+        task = await queue.enqueue({
+            "owner": owner,
+            "project_id": body.project_id,
+            "script_id": script_id,
+            "generation_settings": {
+                "aspect_ratio": getattr(body, "aspect_ratio", "16:9"),
+                "engine": "wan",
+                "duration": duration_val,
+                "prompt": prompt_val,
+                "style": getattr(body, "style", "cinematic 3D animation"),
+                "wan_mode": getattr(body, "wan_mode", "t2v"),
+                "quality": getattr(body, "quality", "development"),
+                "plan_id": getattr(body, "plan_id", None),
+            },
+        })
+        logger.info(f"Wan2.1 AI Director job queued: {task['id']}")
+        return {"data": task, "message": "AI Director video generation queued"}
 
     # Qreate reel pipeline: queued, rendered by the worker pool (scales across processes)
     if body.engine == "qreate":
-        if not script.get("scenes"):
+        if not script or not script.get("scenes"):
             raise HTTPException(status_code=422, detail="Script has no scenes to render")
         await ensure_capacity()
         task = await queue.enqueue({
@@ -87,6 +138,7 @@ async def generate_video(body: VideoGenerateRequest, background_tasks: Backgroun
         })
         logger.info(f"Qreate pipeline job queued: {task['id']}")
         return {"data": task, "message": "Video generation queued"}
+
 
     # Build video prompt from script (PurffleShorts / free / Agnes engines)
     prompt = script_to_video_prompt(script)
@@ -359,6 +411,97 @@ async def download_video(url: str, filename: Optional[str] = "qreate_video.mp4")
     )
 
 
+@router.get("/{video_id}/status", response_model=dict)
+async def get_video_status(video_id: str):
+    """Get video task progress and status details."""
+    task = await crud.get_video_task(video_id)
+    if not task:
+        gen = await crud.get_generated_video(video_id)
+        if gen and gen.get("task_id"):
+            task = await crud.get_video_task(gen["task_id"])
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Video task not found: {video_id}")
+    return {
+        "data": {
+            "id": task.get("id"),
+            "status": task.get("status"),
+            "progress": task.get("progress", 0),
+            "stage": task.get("stage"),
+            "current_scene": task.get("current_scene"),
+            "total_scenes": task.get("total_scenes"),
+            "error_message": task.get("error_message"),
+            "cloudinary_url": task.get("cloudinary_url"),
+            "thumbnail_url": task.get("thumbnail_url"),
+            "completed_at": task.get("completed_at"),
+            "generation_settings": task.get("generation_settings", {}),
+        }
+    }
+
+
+@router.post("/{video_id}/scenes/{scene_id}/regenerate", response_model=dict, status_code=202)
+async def regenerate_scene(
+    video_id: str,
+    scene_id: str,
+    body: SceneRegenerateRequest,
+):
+    """Regenerate visual and motion instructions for a single scene in a video plan."""
+    from app.services.llm.video_director import QwenVideoDirector
+
+    task = await crud.get_video_task(video_id)
+    plan_id = None
+    if task:
+        plan_id = task.get("video_plan_id") or task.get("generation_settings", {}).get("plan_id")
+    if not plan_id:
+        plan_doc = await crud.get_plan_by_task(video_id)
+        if plan_doc:
+            plan_id = plan_doc.get("id")
+
+    if not plan_id:
+        # Check if video_id is plan_id directly
+        plan_doc = await crud.get_video_plan(video_id)
+        if plan_doc:
+            plan_id = video_id
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Video plan not found for video/task: {video_id}",
+            )
+    else:
+        plan_doc = await crud.get_video_plan(plan_id)
+
+    if not plan_doc:
+        raise HTTPException(status_code=404, detail="Video plan document not found")
+
+    scenes = plan_doc.get("scenes", [])
+    target_scene = next((s for s in scenes if s.get("id") == scene_id), None)
+    if not target_scene:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Scene '{scene_id}' not found in video plan",
+        )
+
+    director = QwenVideoDirector()
+    try:
+        updated_scene = await director.regenerate_scene(
+            original_scene=target_scene,
+            instruction=body.instruction,
+            video_style=plan_doc.get("style", "cinematic"),
+        )
+        await crud.update_plan_scene(plan_id, scene_id, updated_scene.model_dump())
+        return {
+            "status": "regenerated",
+            "scene_id": scene_id,
+            "message": "Scene instructions regenerated successfully",
+            "scene": updated_scene.model_dump(),
+        }
+    except Exception as e:
+        logger.error(f"Scene regeneration error: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to regenerate scene: {str(e)}",
+        )
+
+
 @router.get("/{video_id}", response_model=dict)
 async def get_video(video_id: str):
     """Get a generated video by ID."""
@@ -366,3 +509,4 @@ async def get_video(video_id: str):
     if not video:
         raise HTTPException(status_code=404, detail=f"Video not found: {video_id}")
     return {"data": video}
+

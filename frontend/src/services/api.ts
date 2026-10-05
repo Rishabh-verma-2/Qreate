@@ -141,10 +141,38 @@ export const VOICE_PREVIEW_URL = (voiceId: string, language?: string) =>
   `${BASE_URL}/api/voices/preview?voice_id=${encodeURIComponent(voiceId)}` +
   (language ? `&language=${encodeURIComponent(language)}` : '');
 
+// ── AI Video Director ────────────────────────────────────────────────────────
+export const aiDirectorApi = {
+  plan: (data: { prompt: string; style?: string; duration?: number; aspect_ratio?: string; project_id?: string }) =>
+    api.post('/api/videos/plan', data).then((r) => r.data),
+  getPlan: (planId: string) =>
+    api.get(`/api/videos/plan/${planId}`).then((r) => r.data),
+  updateScene: (planId: string, sceneId: string, sceneData: Record<string, unknown>) =>
+    api.put(`/api/videos/plan/${planId}/scenes/${sceneId}`, sceneData).then((r) => r.data),
+  generate: (data: {
+    project_id?: string;
+    prompt: string;
+    style?: string;
+    duration?: number;
+    aspect_ratio?: string;
+    engine?: string;
+    wan_mode?: string;
+    quality?: string;
+    plan_id?: string;
+    script_id?: string;
+  }) => api.post('/api/videos/generate', { ...data, engine: 'wan' }).then((r) => r.data.data),
+  getStatus: (videoId: string) =>
+    api.get(`/api/videos/${videoId}/status`).then((r) => r.data.data),
+  regenerateScene: (videoId: string, sceneId: string, instruction: string) =>
+    api.post(`/api/videos/${videoId}/scenes/${sceneId}/regenerate`, { instruction }).then((r) => r.data),
+  diagnostics: () => api.get('/api/videos/diagnostics').then((r) => r.data),
+};
+
 // ── Health ─────────────────────────────────────────────────────────────────────
 export const healthApi = {
   check: () => api.get('/api/health').then((r) => r.data),
 };
+
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 export const authApi = {

@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.errors import QreateError, qreate_exception_handler, generic_exception_handler
 from app.database.connection import connect_db, close_db, get_db
-from app.api.routes import auth, health, pipeline, projects, scripts, uploads, videos, voices
+from app.api.routes import ai_director, auth, health, pipeline, projects, scripts, uploads, videos, voices
+from app.core.diagnostics import system_diagnostics
 from app.services.media import vision
 from app.services.media.http import close_client
 from app.worker.runner import start_embedded_pool, stop_embedded_pool
@@ -64,6 +65,8 @@ async def startup():
         # The default key is public in the repo — anyone could forge login tokens with it
         raise RuntimeError("Set JWT_SECRET_KEY to a private random value (32+ chars) before running in production")
     await connect_db()
+    # Run AI diagnostics in background
+    asyncio.create_task(system_diagnostics())
     if settings.EMBEDDED_WORKER and get_db() is not None:
         start_embedded_pool()
         asyncio.create_task(vision.warm_up())
@@ -78,6 +81,7 @@ async def shutdown():
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(health.router)
+app.include_router(ai_director.router)
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(scripts.router)
@@ -85,6 +89,7 @@ app.include_router(videos.router)
 app.include_router(pipeline.router)
 app.include_router(uploads.router)
 app.include_router(voices.router)
+
 
 
 @app.get("/")

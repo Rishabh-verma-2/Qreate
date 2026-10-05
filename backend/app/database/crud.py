@@ -355,3 +355,102 @@ async def update_user_last_login(user_id: str) -> None:
     except Exception:
         pass
 
+
+# ── AI Video Director / Video Plans ──────────────────────────────────────────
+
+async def save_video_plan(plan: dict, project_id: Optional[str] = None, task_id: Optional[str] = None) -> str:
+    """Save a generated VideoPlan to wan_video_plans collection."""
+    db = get_db()
+    now = _utcnow()
+    doc = {
+        **plan,
+        "project_id": project_id,
+        "task_id": task_id,
+        "created_at": now,
+        "updated_at": now,
+    }
+    if db is None:
+        import uuid
+        return str(uuid.uuid4())
+    result = await db.wan_video_plans.insert_one(doc)
+    return str(result.inserted_id)
+
+
+async def get_video_plan(plan_id: str) -> Optional[dict]:
+    """Retrieve a VideoPlan by its ID."""
+    db = get_db()
+    if db is None:
+        return None
+    try:
+        doc = await db.wan_video_plans.find_one({"_id": ObjectId(plan_id)})
+    except Exception:
+        return None
+    return _doc_to_dict(doc) if doc else None
+
+
+async def get_plan_by_task(task_id: str) -> Optional[dict]:
+    """Retrieve a VideoPlan linked to a task_id."""
+    db = get_db()
+    if db is None:
+        return None
+    doc = await db.wan_video_plans.find_one({"task_id": task_id})
+    return _doc_to_dict(doc) if doc else None
+
+
+async def update_plan_scene(plan_id: str, scene_id: str, scene_data: Dict[str, Any]) -> bool:
+    """Update a specific scene within a VideoPlan."""
+    db = get_db()
+    if db is None:
+        return False
+    try:
+        plan = await db.wan_video_plans.find_one({"_id": ObjectId(plan_id)})
+        if not plan:
+            return False
+        scenes = plan.get("scenes", [])
+        updated = False
+        for s in scenes:
+            if s.get("id") == scene_id:
+                s.update(scene_data)
+                updated = True
+                break
+        if updated:
+            await db.wan_video_plans.update_one(
+                {"_id": ObjectId(plan_id)},
+                {"$set": {"scenes": scenes, "updated_at": _utcnow()}}
+            )
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error updating plan scene {scene_id} in {plan_id}: {e}")
+        return False
+
+
+# ── Character References ─────────────────────────────────────────────────────
+
+async def save_character_ref(job_id: str, char_id: str, image_path: str) -> None:
+    """Cache character reference image path."""
+    db = get_db()
+    if db is None:
+        return
+    try:
+        await db.character_references.update_one(
+            {"char_id": char_id},
+            {"$set": {"job_id": job_id, "image_path": image_path, "updated_at": _utcnow()}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.warning(f"Failed to cache character ref {char_id}: {e}")
+
+
+async def get_character_ref(char_id: str) -> Optional[str]:
+    """Retrieve cached character reference image path."""
+    db = get_db()
+    if db is None:
+        return None
+    try:
+        doc = await db.character_references.find_one({"char_id": char_id})
+        return doc.get("image_path") if doc else None
+    except Exception:
+        return None
+
+

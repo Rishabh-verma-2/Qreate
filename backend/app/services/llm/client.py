@@ -37,6 +37,15 @@ class Provider:
 def _configured_providers() -> List[Provider]:
     s = get_settings()
     catalog = {
+        # ── Local Qwen3 via vLLM (primary AI Director LLM) ─────────────────
+        "qwen": Provider(
+            "qwen",
+            s.QWEN_BASE_URL.rstrip("/"),
+            s.QWEN_API_KEY or "EMPTY",
+            s.QWEN_MODEL,
+            json_mode=False,  # Qwen3 works better without forced JSON mode
+        ),
+        # ── Cloud providers ─────────────────────────────────────────────────
         "groq": Provider("groq", "https://api.groq.com/openai/v1", s.GROQ_API_KEY, s.GROQ_MODEL),
         "openrouter": Provider("openrouter", "https://openrouter.ai/api/v1", s.OPENROUTER_API_KEY, s.OPENROUTER_MODEL, json_mode=False),
         "gemini": Provider("gemini", "https://generativelanguage.googleapis.com/v1beta/openai", s.GEMINI_API_KEY, s.GEMINI_MODEL),
@@ -50,7 +59,12 @@ def _configured_providers() -> List[Provider]:
             continue
         if name == "ollama" and not s.OLLAMA_BASE_URL:
             continue
-        if name != "ollama" and not p.api_key:
+        # Qwen requires QWEN_BASE_URL (non-default means intentionally configured)
+        if name == "qwen" and s.QWEN_BASE_URL == "http://localhost:8000/v1":
+            # Only include in chain if explicitly put in LLM_PROVIDER_ORDER
+            # (video_director.py pings it separately)
+            pass
+        if name not in ("ollama", "qwen") and not p.api_key:
             continue
         providers.append(p)
     return providers

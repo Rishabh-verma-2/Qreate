@@ -89,34 +89,102 @@ async def process_job(job: dict, worker_id: str) -> None:
 
     hb = asyncio.create_task(heartbeat())
     try:
-        script = await _ensure_script(job, report)
-        await report(15, "preparing")
-        result = await produce_video(script, job_id, job["project_id"], report)
+        engine = job.get("generation_settings", {}).get("engine", "qreate")
+        if engine == "wan":
+            from app.services.wan_pipeline.runner import produce_wan_video
+            from app.services.llm.schemas import VideoPlan
+            from app.services.llm.video_director import QwenVideoDirector
 
-        video = await crud.create_generated_video({
-            "project_id": job["project_id"],
-            "script_id": script["id"],
-            "task_id": job_id,
-            "batch_id": job.get("batch_id"),
-            "title": script.get("title"),
-            "hook": script.get("hook"),
-            "post": script.get("post") or {},
-            "inspiration": research_sources(script.get("research") or {}),
-            "original_url": result["cloudinary_url"],
-            "file_format": "mp4",
-            **result,
-        })
-        await crud.update_video_task(job_id, {
-            "status": "completed",
-            "stage": "done",
-            "progress": 100,
-            "completed_at": _now(),
-            "generated_video_id": video["id"],
-            "cloudinary_url": result["cloudinary_url"],
-            "thumbnail_url": result.get("thumbnail_url"),
-            "title": script.get("title"),
-        })
-        logger.info(f"[{worker_id}] job {job_id} completed")
+            plan_id = job.get("generation_settings", {}).get("plan_id")
+            video_plan = None
+            if plan_id:
+                plan_doc = await crud.get_video_plan(plan_id)
+                if plan_doc:
+                    video_plan = VideoPlan.model_validate(plan_doc)
+            if not video_plan:
+                await report(5, "planning video with AI Director")
+                prompt = (
+                    job.get("generation_settings", {}).get("prompt")
+                    or job.get("topic")
+                    or "Cinematic video"
+                )
+                style = job.get("generation_settings", {}).get("style", "cinematic 3D animation")
+                duration = int(job.get("generation_settings", {}).get("duration", 30))
+                aspect_ratio = job.get("generation_settings", {}).get("aspect_ratio", "16:9")
+                director = QwenVideoDirector()
+                video_plan = await director.plan(
+                    prompt=prompt,
+                    style=style,
+                    duration=duration,
+                    aspect_ratio=aspect_ratio,
+                )
+                plan_id = await crud.save_video_plan(
+                    video_plan.model_dump(),
+                    project_id=job["project_id"],
+                    task_id=job_id,
+                )
+                await crud.update_video_task(job_id, {"video_plan_id": plan_id})
+
+            result = await produce_wan_video(
+                video_plan=video_plan,
+                job_id=job_id,
+                project_id=job["project_id"],
+                report=report,
+                task_id=job_id,
+            )
+
+            video = await crud.create_generated_video({
+                "project_id": job["project_id"],
+                "script_id": job.get("script_id"),
+                "task_id": job_id,
+                "batch_id": job.get("batch_id"),
+                "title": video_plan.title,
+                "hook": video_plan.scenes[0].narration if video_plan.scenes else "",
+                "original_url": result["cloudinary_url"],
+                "file_format": "mp4",
+                **result,
+            })
+            await crud.update_video_task(job_id, {
+                "status": "completed",
+                "stage": "done",
+                "progress": 100,
+                "completed_at": _now(),
+                "generated_video_id": video["id"],
+                "cloudinary_url": result["cloudinary_url"],
+                "thumbnail_url": result.get("thumbnail_url"),
+                "title": video_plan.title,
+            })
+            logger.info(f"[{worker_id}] AI Director job {job_id} completed")
+        else:
+            script = await _ensure_script(job, report)
+            await report(15, "preparing")
+            result = await produce_video(script, job_id, job["project_id"], report)
+
+            video = await crud.create_generated_video({
+                "project_id": job["project_id"],
+                "script_id": script["id"],
+                "task_id": job_id,
+                "batch_id": job.get("batch_id"),
+                "title": script.get("title"),
+                "hook": script.get("hook"),
+                "post": script.get("post") or {},
+                "inspiration": research_sources(script.get("research") or {}),
+                "original_url": result["cloudinary_url"],
+                "file_format": "mp4",
+                **result,
+            })
+            await crud.update_video_task(job_id, {
+                "status": "completed",
+                "stage": "done",
+                "progress": 100,
+                "completed_at": _now(),
+                "generated_video_id": video["id"],
+                "cloudinary_url": result["cloudinary_url"],
+                "thumbnail_url": result.get("thumbnail_url"),
+                "title": script.get("title"),
+            })
+            logger.info(f"[{worker_id}] job {job_id} completed")
+
     except asyncio.CancelledError:
         # Shutting down: hand the job back so another worker (or the restart) resumes it
         await crud.update_video_task(job_id, {"status": "queued", "stage": "requeued", "worker_id": None})

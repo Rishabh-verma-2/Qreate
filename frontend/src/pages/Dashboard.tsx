@@ -68,7 +68,7 @@ export default function Dashboard() {
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            maxLength={500}
+            maxLength={5000}
             placeholder="e.g. 5 money habits every college student should know"
             aria-label="Video topic"
             className="flex-1 h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"

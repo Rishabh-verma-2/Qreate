@@ -48,6 +48,47 @@ class DatabaseError(QreateError):
         super().__init__(f"Database error: {message}", status_code=503)
 
 
+# ── AI Video Director errors ──────────────────────────────────────────────────
+
+class QwenError(QreateError):
+    """Raised when Qwen3 / vLLM is unreachable or returns an unexpected response."""
+    def __init__(self, message: str, status_code: int = 503):
+        super().__init__(f"Qwen AI Director error: {message}", status_code=status_code)
+
+
+class QwenUnavailableError(QwenError):
+    """Raised when the vLLM server is not reachable."""
+    def __init__(self):
+        super().__init__(
+            "Qwen3 vLLM server is not available. "
+            "Start it with: vllm serve Qwen/Qwen3-8B --port 8000 --api-key EMPTY",
+            status_code=503,
+        )
+
+
+class VideoPlanError(QreateError):
+    """Raised when Qwen cannot produce a valid VideoPlan JSON after retries."""
+    def __init__(self, message: str):
+        super().__init__(f"Video plan generation failed: {message}", status_code=502)
+
+
+class WanError(QreateError):
+    """Raised when Wan2.1 scene generation fails."""
+    def __init__(self, message: str, scene_id: Optional[str] = None):
+        detail = {"scene_id": scene_id} if scene_id else {}
+        super().__init__(
+            f"Wan2.1 generation failed: {message}",
+            status_code=502,
+            detail=detail,
+        )
+
+
+class ComfyUIError(QreateError):
+    """Raised when ComfyUI is unreachable or a workflow fails."""
+    def __init__(self, message: str, status_code: int = 503):
+        super().__init__(f"ComfyUI error: {message}", status_code=status_code)
+
+
 async def qreate_exception_handler(request: Request, exc: QreateError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,

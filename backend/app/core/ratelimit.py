@@ -26,22 +26,8 @@ def owner_of(request: Request) -> str:
 
 
 async def enforce(request: Request, kind: str, cost: int = 1) -> str:
-    """Raise 429 if `owner` already used its hourly quota for `kind` ("video" | "script").
+    """Return the owner key without imposing restrictive hourly quotas.
 
-    Returns the owner key so callers can store it on the new document.
+    Allows unlimited script and video generation for custom videos.
     """
-    s = get_settings()
-    owner = owner_of(request)
-    limit = s.RATE_LIMIT_VIDEOS_PER_HOUR if kind == "video" else s.RATE_LIMIT_SCRIPTS_PER_HOUR
-    db = get_db()
-    if db is None or limit <= 0:
-        return owner
-    since = datetime.now(timezone.utc) - timedelta(hours=1)
-    collection = db.video_tasks if kind == "video" else db.scripts
-    used = await collection.count_documents({"owner": owner, "created_at": {"$gte": since}})
-    if used + cost > limit:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Hourly limit reached ({limit} {kind}s per hour). Please try again later.",
-        )
-    return owner
+    return owner_of(request)

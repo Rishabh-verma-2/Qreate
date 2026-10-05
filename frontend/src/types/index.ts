@@ -209,3 +209,114 @@ export interface RegisterCredentials {
   name?: string;
   full_name?: string;
 }
+
+// ── AI Video Director types ──────────────────────────────────────────────────
+
+export interface CameraInstruction {
+  shot_type: string;
+  movement: string;
+  angle: string;
+}
+
+export interface VideoCharacter {
+  id: string;
+  name: string;
+  description: string;
+  appearance: string;
+  clothing: string;
+  style?: string;
+  reference_image?: string;
+}
+
+export interface VideoPlanScene {
+  id: string;
+  duration: number;
+  narration: string;
+  visual_prompt: string;
+  motion_prompt: string;
+  camera: CameraInstruction;
+  style: string;
+  characters: string[];
+  transition_in: string;
+  transition_out: string;
+  reference_image?: string;
+  generated_clip_url?: string;
+}
+
+export interface AudioPlan {
+  tts_voice?: string;
+  music_mood?: string;
+  sfx_notes?: string;
+}
+
+export interface VideoPlan {
+  title: string;
+  total_duration: number;
+  style: string;
+  aspect_ratio: '16:9' | '9:16' | '1:1';
+  fps: number;
+  language: string;
+  audio?: AudioPlan;
+  characters: VideoCharacter[];
+  scenes: VideoPlanScene[];
+}
+
+export interface VideoPlanRequest {
+  prompt: string;
+  style?: string;
+  duration?: number;
+  aspect_ratio?: '16:9' | '9:16' | '1:1';
+  project_id?: string;
+}
+
+export interface WanGenerateRequest {
+  project_id: string;
+  prompt: string;
+  style?: string;
+  duration?: number;
+  aspect_ratio?: '16:9' | '9:16' | '1:1';
+  engine: 'wan';
+  wan_mode?: 't2v' | 'i2v';
+  quality?: 'development' | 'production';
+  plan_id?: string;
+  script_id?: string;
+}
+
+export interface WanVideoTask extends VideoTask {
+  current_scene?: number;
+  total_scenes?: number;
+  video_plan?: VideoPlan;
+}
+
+export interface DiagnosticsResponse {
+  gpu: {
+    available: boolean;
+    cuda: boolean;
+    gpu_name: string | null;
+    vram_gb: number | null;
+    warning: string | null;
+  };
+  qwen: {
+    available: boolean;
+    base_url: string;
+    model: string;
+    warning: string | null;
+    models?: string[];
+  };
+  comfyui: {
+    available: boolean;
+    base_url: string;
+    warning: string | null;
+  };
+  wan: {
+    available: boolean;
+    mode: string;
+    model_size: string;
+    model_path: string;
+    warning: string | null;
+  };
+  warnings: string[];
+  video_engine_ready: boolean;
+  llm_ready: boolean;
+}
+

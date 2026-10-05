@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import CreateVideo from './pages/CreateVideo';
+import AiDirectorStudio from './pages/AiDirectorStudio';
 import ScriptEditor from './pages/ScriptEditor';
 import GenerateVideo from './pages/GenerateVideo';
 import VideoLibrary from './pages/VideoLibrary';
@@ -39,6 +40,7 @@ function App() {
                       <Route path="projects" element={<Projects />} />
                       <Route path="projects/:projectId" element={<ProjectDetail />} />
                       <Route path="create" element={<CreateVideo />} />
+                      <Route path="ai-director" element={<AiDirectorStudio />} />
                       <Route path="scripts/:scriptId" element={<ScriptEditor />} />
                       <Route path="generate-video/:scriptId" element={<GenerateVideo />} />
                       <Route path="library" element={<VideoLibrary />} />
@@ -46,6 +48,7 @@ function App() {
                       <Route path="batch" element={<BatchStudio />} />
                       <Route path="batch/:batchId" element={<BatchDetail />} />
                       <Route path="*" element={<NotFound />} />
+
                     </Routes>
                   </AppLayout>
                 </ProtectedRoute>

@@ -1,0 +1,42 @@
+{
+  "_comment": "Wan2.1 Text-to-Video ComfyUI workflow template. Placeholders: {{PROMPT}}, {{NEGATIVE_PROMPT}}, {{FRAMES}}, {{WIDTH}}, {{HEIGHT}}, {{FPS}}. Requires: ComfyUI-WanVideoWrapper or ComfyUI-Wan2.1 custom nodes.",
+  "1": {
+    "class_type": "WanTextEncode",
+    "inputs": {
+      "positive": "{{PROMPT}}",
+      "negative": "{{NEGATIVE_PROMPT}}"
+    }
+  },
+  "2": {
+    "class_type": "WanModelLoader",
+    "inputs": {
+      "model": "Wan2.1-T2V-14B",
+      "precision": "bf16"
+    }
+  },
+  "3": {
+    "class_type": "WanSampler",
+    "inputs": {
+      "model": ["2", 0],
+      "conditioning": ["1", 0],
+      "num_frames": "{{FRAMES}}",
+      "width": "{{WIDTH}}",
+      "height": "{{HEIGHT}}",
+      "fps": "{{FPS}}",
+      "steps": 20,
+      "cfg": 6.0,
+      "seed": -1
+    }
+  },
+  "4": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["3", 0],
+      "frame_rate": "{{FPS}}",
+      "loop_count": 0,
+      "filename_prefix": "wan_t2v",
+      "format": "video/h264-mp4",
+      "save_output": true
+    }
+  }
+}

@@ -15,7 +15,7 @@ import { projectsApi, scriptsApi } from '../services/api';
 import { FORMATS, THEMES, loadStyle, saveStyle, type StyleChoices } from '../lib/styleOptions';
 import { cn, scrollAppToTop } from '../lib/utils';
 
-const TOPIC_MAX = 500;
+const TOPIC_MAX = 5000;
 
 const TONES: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'educational', label: 'Educational', icon: GraduationCap },
@@ -27,9 +27,9 @@ const TONES: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'mysterious', label: 'Mysterious', icon: Moon },
   { id: 'energetic', label: 'Fast-paced', icon: Zap },
 ];
-const MAX_TONES = 2;
+const MAX_TONES = 8;
 
-const DURATIONS = ['15', '30', '60', '90'];
+const DURATIONS = ['15', '30', '60', '90', '120', '180'];
 const LANGUAGES = ['English', 'Hindi', 'Hinglish'];
 const AGES = ['Any age', '13–17', '18–24', '25–34', '35+'];
 const REGIONS = ['India', 'Global'];

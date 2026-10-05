@@ -86,8 +86,17 @@ export default function Landing() {
             {samples.length > 0 ? samples.slice(0, 2).map((v, i) => (
               <div key={v.id} className={i === 1 ? 'hidden sm:block mt-10' : ''}>
                 <div className="w-44 sm:w-52 rounded-[24px] border-[6px] border-foreground bg-foreground overflow-hidden">
-                  <VerticalPlayer url={v.cloudinary_url || v.original_url} poster={thumbnailFor(v.cloudinary_url, v.thumbnail_url)} className="rounded-[18px]" />
+                  <VerticalPlayer
+                    url={v.cloudinary_url || v.original_url}
+                    poster={thumbnailFor(v.cloudinary_url, v.thumbnail_url)}
+                    className="rounded-[18px]"
+                    autoPlay
+                    muted
+                    loop
+                    controls={false}
+                  />
                 </div>
+
                 <p className="text-xs text-muted-foreground mt-2 text-center line-clamp-1 w-44 sm:w-52">{v.title}</p>
               </div>
             )) : (

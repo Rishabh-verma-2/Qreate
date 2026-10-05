@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    topic: str = Field(..., min_length=1, max_length=500)
+    topic: str = Field(..., min_length=1, max_length=5000)
     description: Optional[str] = Field(None, max_length=10000)
 
 
@@ -91,13 +91,13 @@ def style_from(options) -> Dict[str, Any]:
 
 
 class ScriptGenerateRequest(ContentOptions):
-    project_id: str
-    topic: str = Field(..., min_length=1, max_length=500)
+    project_id: Optional[str] = None
+    topic: str = Field(..., min_length=1, max_length=5000)
 
 
 class PipelineRunRequest(ContentOptions):
     """One-shot: topic in, publish-ready video out (script written by the worker)."""
-    topic: str = Field(..., min_length=3, max_length=500)
+    topic: str = Field(..., min_length=1, max_length=5000)
 
 
 class BatchCreateRequest(BaseModel):
@@ -107,9 +107,9 @@ class BatchCreateRequest(BaseModel):
     @field_validator("topics")
     @classmethod
     def _topic_length(cls, v):
-        too_long = [t for t in v if len(t.strip()) > 500]
+        too_long = [t for t in v if len(t.strip()) > 5000]
         if too_long:
-            raise ValueError(f"Each topic must be 500 characters or fewer ({len(too_long)} too long)")
+            raise ValueError(f"Each topic must be 5000 characters or fewer ({len(too_long)} too long)")
         return v
     options: ContentOptions = ContentOptions()
 
@@ -142,27 +142,54 @@ class ScriptResponse(BaseModel):
 # ── Video Generation ──────────────────────────────────────────────────────────
 
 class VideoGenerateRequest(BaseModel):
-    project_id: str
+    project_id: Optional[str] = None
     script_id: str
     mode: str = Field("text", pattern="^(text|keyframe|reference)$")
-    duration_seconds: int = Field(5, ge=4, le=300)
+    duration_seconds: int = Field(5, ge=4, le=600)
     aspect_ratio: str = Field("9:16", pattern="^(21:9|16:9|4:3|1:1|3:4|9:16)$")
     seed: Optional[int] = None
     use_full_script: bool = True
-    # "qreate" = trend-aware reel pipeline (queued, 1080x1920); others = PurffleShorts / legacy engines
-    engine: str = Field("qreate", pattern="^(qreate|auto|free|agnes|purffle)$")
+    # "qreate" = trend-aware reel pipeline (queued, 1080x1920); others = PurffleShorts / legacy engines / wan
+    engine: str = Field("qreate", pattern="^(qreate|auto|free|agnes|purffle|wan)$")
 
+
+class VideoPlanRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=5000)
+    style: str = "cinematic 3D animation"
+    duration: int = Field(30, ge=5, le=600)
+    aspect_ratio: str = Field("16:9", pattern="^(16:9|9:16|1:1)$")
+    project_id: Optional[str] = None
+
+
+class WanGenerateRequest(BaseModel):
+    project_id: Optional[str] = None
+    prompt: str = Field(..., min_length=1, max_length=5000)
+    style: str = "cinematic 3D animation"
+    duration: int = Field(30, ge=5, le=600)
+    aspect_ratio: str = Field("16:9", pattern="^(16:9|9:16|1:1)$")
+    engine: str = Field("wan", pattern="^(wan)$")
+    wan_mode: str = Field("t2v", pattern="^(t2v|i2v)$")
+    quality: str = Field("development", pattern="^(development|production)$")
+    plan_id: Optional[str] = None
+    script_id: Optional[str] = None
+
+
+class SceneRegenerateRequest(BaseModel):
+    instruction: str = Field(..., min_length=3, max_length=1000)
 
 
 class VideoTaskResponse(BaseModel):
     id: str
     project_id: str
-    script_id: str
+    script_id: Optional[str] = None
     agnes_video_id: Optional[str] = None
     status: str  # pending | queued | in_progress | completed | failed
     progress: int = 0
     error_message: Optional[str] = None
     generation_settings: Dict[str, Any] = {}
+    current_scene: Optional[int] = None
+    total_scenes: Optional[int] = None
+    stage: Optional[str] = None
     created_at: Any
     updated_at: Any
     completed_at: Optional[Any] = None
@@ -190,3 +217,7 @@ class HealthResponse(BaseModel):
     database: str
     cloudinary: str
     agnes: str
+    qwen: Optional[Dict[str, Any]] = None
+    comfyui: Optional[Dict[str, Any]] = None
+    wan: Optional[Dict[str, Any]] = None
+    gpu: Optional[Dict[str, Any]] = None

@@ -7,13 +7,45 @@ import { downloadVideoFile } from '../lib/download';
 import { useToast } from './ui/Toast';
 import { StatusBadge } from './ui/Badge';
 
-/** Thumbnail first (cheap), real <video> only once the viewer presses play. */
-export function VerticalPlayer({ url, poster, className }: { url?: string; poster?: string; className?: string }) {
-  const [playing, setPlaying] = useState(false);
+/** Thumbnail first (cheap), real <video> only once the viewer presses play, or autoplay if specified. */
+export function VerticalPlayer({
+  url,
+  poster,
+  className,
+  autoPlay = false,
+  muted = false,
+  loop = false,
+  controls = true,
+}: {
+  url?: string;
+  poster?: string;
+  className?: string;
+  autoPlay?: boolean;
+  muted?: boolean;
+  loop?: boolean;
+  controls?: boolean;
+}) {
+  const [playing, setPlaying] = useState(autoPlay);
   return (
     <div className={cn('aspect-[9/16] bg-muted relative overflow-hidden rounded-lg', className)}>
-      {url && (playing || !poster) ? (
-        <video src={url} poster={poster} controls playsInline autoPlay={playing} preload="metadata" className="w-full h-full object-cover bg-black" />
+      {url && (autoPlay || playing || !poster) ? (
+        <video
+          src={url}
+          poster={poster}
+          controls={controls}
+          playsInline
+          autoPlay={autoPlay || playing}
+          muted={muted}
+          loop={loop}
+          preload={autoPlay ? 'auto' : 'metadata'}
+          className="w-full h-full object-cover bg-black"
+          ref={(el) => {
+            if (el && autoPlay && muted) {
+              el.muted = true;
+              el.play().catch(() => {});
+            }
+          }}
+        />
       ) : url && poster ? (
         <button type="button" onClick={() => setPlaying(true)} className="group w-full h-full" aria-label="Play video">
           <img src={poster} alt="" loading="lazy" className="w-full h-full object-cover" />
@@ -31,6 +63,7 @@ export function VerticalPlayer({ url, poster, className }: { url?: string; poste
     </div>
   );
 }
+
 
 export function CopyPostButton({ video }: { video: Pick<GeneratedVideo, 'post' | 'title'> }) {
   const [copied, setCopied] = useState(false);

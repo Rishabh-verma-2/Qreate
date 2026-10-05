@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  Wand2,
   X,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -19,6 +20,7 @@ import Logo from '../components/common/Logo';
 const NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/create', icon: Clapperboard, label: 'Create video' },
+  { to: '/ai-director', icon: Wand2, label: 'AI Director' },
   { to: '/batch', icon: Layers, label: 'Batch studio' },
   { to: '/library', icon: Library, label: 'Library' },
   { to: '/profile', icon: Settings, label: 'Settings' },
@@ -27,6 +29,7 @@ const NAV = [
 const TITLES: [string, string][] = [
   ['/dashboard', 'Dashboard'],
   ['/create', 'Create video'],
+  ['/ai-director', 'AI Video Director'],
   ['/scripts', 'Script'],
   ['/generate-video', 'Render'],
   ['/batch', 'Batch studio'],
@@ -34,6 +37,7 @@ const TITLES: [string, string][] = [
   ['/projects', 'Projects'],
   ['/profile', 'Settings'],
 ];
+
 
 function pageTitle(pathname: string) {
   return TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Qreate';
